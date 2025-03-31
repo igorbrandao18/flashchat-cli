@@ -9,6 +9,8 @@ export interface Message {
   sender_id: string;
   receiver_id: string;
   read_at: string | null;
+  message_type: 'text' | 'audio';
+  file_url?: string;
 }
 
 interface UseMessagesProps {
@@ -16,7 +18,15 @@ interface UseMessagesProps {
   currentUserId: string;
 }
 
-export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
+interface UseMessagesReturn {
+  messages: Message[];
+  loading: boolean;
+  sendMessage: (content: string, type?: 'text' | 'audio', fileUrl?: string) => Promise<Message | null>;
+  markMessagesAsRead: (messagesToMark: Message[]) => Promise<void>;
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+}
+
+export function useMessages({ chatId, currentUserId }: UseMessagesProps): UseMessagesReturn {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -29,38 +39,24 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
 
     try {
       console.log('Fetching messages for chat:', { chatId, currentUserId });
-      const { data: sentMessages, error: sentError } = await supabase
+      const { data, error } = await supabase
         .from('messages')
         .select('*')
-        .eq('sender_id', currentUserId)
-        .eq('receiver_id', chatId);
+        .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${chatId}),and(sender_id.eq.${chatId},receiver_id.eq.${currentUserId})`)
+        .order('created_at', { ascending: true });
 
-      if (sentError) {
-        console.error('Error fetching sent messages:', sentError);
+      if (error) {
+        console.error('Error fetching messages:', error);
         return;
       }
 
-      const { data: receivedMessages, error: receivedError } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('sender_id', chatId)
-        .eq('receiver_id', currentUserId);
-
-      if (receivedError) {
-        console.error('Error fetching received messages:', receivedError);
-        return;
-      }
-
-      const allMessages = [...(sentMessages || []), ...(receivedMessages || [])].sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      );
-
-      console.log('Fetched messages:', allMessages.length, 'messages');
-      setMessages(allMessages);
+      console.log('Fetched messages:', data?.length, 'messages');
+      setMessages(data || []);
       setLoading(false);
-      if (allMessages.length) {
-        markMessagesAsRead(allMessages);
-        await cacheMessages(allMessages);
+      
+      if (data?.length) {
+        markMessagesAsRead(data);
+        await cacheMessages(data);
       }
     } catch (error) {
       console.error('Error in fetchMessages:', error);
@@ -79,13 +75,13 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
     fetchMessages();
 
     // Subscribe to realtime updates
-    const channel = supabase.channel(`chat:${chatId}`);
+    const channel = supabase.channel('messages');
 
     channel
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
           table: 'messages',
           filter: `or(and(sender_id.eq.${currentUserId},receiver_id.eq.${chatId}),and(sender_id.eq.${chatId},receiver_id.eq.${currentUserId}))`,
@@ -93,24 +89,22 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
         (payload) => {
           console.log('Realtime message update:', payload);
           
-          if (payload.eventType === 'INSERT') {
-            const newMessage = payload.new as Message;
-            console.log('New message received:', newMessage);
-            
-            setMessages((current) => {
-              // Avoid duplicate messages
-              if (current.some(msg => msg.id === newMessage.id)) {
-                return current;
-              }
-              const updatedMessages = [...current, newMessage];
-              cacheMessages(updatedMessages);
-              return updatedMessages;
-            });
-
-            // Mark message as read if we're the receiver
-            if (newMessage.receiver_id === currentUserId) {
-              markMessagesAsRead([newMessage]);
+          const newMessage = payload.new as Message;
+          console.log('New message received:', newMessage);
+          
+          setMessages((current) => {
+            // Avoid duplicate messages
+            if (current.some(msg => msg.id === newMessage.id)) {
+              return current;
             }
+            const updatedMessages = [...current, newMessage];
+            cacheMessages(updatedMessages);
+            return updatedMessages;
+          });
+
+          // Mark message as read if we're the receiver
+          if (newMessage.receiver_id === currentUserId) {
+            markMessagesAsRead([newMessage]);
           }
         }
       )
@@ -180,24 +174,27 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
     }
   };
 
-  const sendMessage = async (content: string) => {
+  const sendMessage = async (content: string, type: 'text' | 'audio' = 'text', fileUrl?: string) => {
     if (!chatId || !currentUserId || !content.trim()) {
       console.error('Invalid message data:', { chatId, currentUserId, content });
       return null;
     }
 
     try {
-      console.log('Sending message:', content, 'from:', currentUserId, 'to:', chatId);
+      console.log('Sending message:', { content, type, fileUrl }, 'from:', currentUserId, 'to:', chatId);
       const newMessage = {
         content: content.trim(),
         sender_id: currentUserId,
         receiver_id: chatId,
+        message_type: type,
+        file_url: fileUrl,
+        created_at: new Date().toISOString(),
       };
 
       const { data, error } = await supabase
         .from('messages')
         .insert([newMessage])
-        .select('*')
+        .select()
         .single();
 
       if (error) {
@@ -209,7 +206,13 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
       
       // Update local messages immediately
       setMessages(current => {
-        const updatedMessages = [...current, data];
+        // Evita mensagens duplicadas
+        if (current.some(msg => msg.id === data.id)) {
+          return current;
+        }
+        const updatedMessages = [...current, data].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
         cacheMessages(updatedMessages);
         return updatedMessages;
       });
@@ -226,5 +229,6 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
     loading,
     sendMessage,
     markMessagesAsRead,
+    setMessages,
   };
 } 

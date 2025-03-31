@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="100%" height="100%" viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <pattern id="whatsappPattern" x="0" y="0" width="50" height="50" patternUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="50" height="50" fill="#E5DDD5"/>
+      <path d="M0 0h50v50H0z" fill-opacity="0.05"/>
+      <path d="M25 0v50M0 25h50" stroke="#000" stroke-opacity="0.05" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#whatsappPattern)"/>
+</svg> 

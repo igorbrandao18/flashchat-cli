@@ -1,80 +1,168 @@
-# 🌟 FlashChat - Modern Mobile Messaging
+# 🚀 FlashChat - Chat em Tempo Real com React Native
 
-A sleek and powerful real-time chat application built with Expo (React Native) and Supabase, featuring a WhatsApp-inspired design.
+<div align="center">
+  <img src="https://img.shields.io/badge/React_Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" />
+  <img src="https://img.shields.io/badge/Expo-000020?style=for-the-badge&logo=expo&logoColor=white" />
+  <img src="https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white" />
+  <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" />
+</div>
 
-## 🚀 Features
+<div align="center">
+  <p>Um aplicativo de chat moderno e elegante construído com React Native, Expo e Supabase! 💬✨</p>
+</div>
 
-- 👤 User Authentication (Email)
-- 💬 Real-time Individual Chat
-- 🌓 Dark/Light Mode Support
-- 🎨 WhatsApp-inspired UI/UX
-- 🔄 Real-time Message Sync
-- 📱 Responsive Design
-- 🔒 Secure Authentication
-- 💾 Persistent Data Storage
+## ✨ Funcionalidades
 
-## 🛠 Tech Stack
+- 🔐 **Autenticação Segura**
+  - Login com email/senha
+  - Persistência de sessão
+  - Proteção de rotas
 
-- **Frontend**:
-  - Expo (React Native)
-  - React Navigation
-  - Expo Router
-  - TypeScript
+- 💬 **Chat em Tempo Real**
+  - Mensagens instantâneas
+  - Indicadores de status de envio
+  - Confirmação de leitura
+  - Animações suaves
 
-- **Backend**:
-  - Supabase
-    - Authentication
-    - Real-time Database
-    - Row Level Security
-    - PostgreSQL
+- 🎤 **Mensagens de Voz**
+  - Gravação de áudio
+  - Reprodução inline
+  - Visualização de forma de onda
+  - Upload automático
 
-## 📋 Prerequisites
+- 🎨 **UI/UX Premium**
+  - Design inspirado no WhatsApp
+  - Modo claro/escuro
+  - Animações fluidas
+  - Feedback tátil
 
-- Node.js (v14 or higher)
-- npm or yarn
-- Expo CLI
-- Supabase Account
+## 🛠️ Tecnologias
 
-## 🚀 Getting Started
+- [**Expo**](https://expo.dev/) - Framework React Native
+- [**Supabase**](https://supabase.com/) - Backend as a Service
+- [**TypeScript**](https://www.typescriptlang.org/) - Tipagem estática
+- [**Expo AV**](https://docs.expo.dev/versions/latest/sdk/av/) - Gravação e reprodução de áudio
+- [**Expo Haptics**](https://docs.expo.dev/versions/latest/sdk/haptics/) - Feedback tátil
+- [**AsyncStorage**](https://react-native-async-storage.github.io/async-storage/) - Persistência local
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/igorbrandao18/flashchat-cli.git
-   cd flashchat-cli
-   ```
+## 📱 Screenshots
 
-2. Install dependencies:
-   ```bash
-   npm install
-   # or
-   yarn install
-   ```
+<div align="center">
+  <table>
+    <tr>
+      <td><strong>Login</strong></td>
+      <td><strong>Chat</strong></td>
+      <td><strong>Gravação</strong></td>
+    </tr>
+    <tr>
+      <td>[Imagem Login]</td>
+      <td>[Imagem Chat]</td>
+      <td>[Imagem Gravação]</td>
+    </tr>
+  </table>
+</div>
 
-3. Set up environment variables:
-   Create a `.env` file in the root directory and add your Supabase credentials:
-   ```
-   SUPABASE_URL=your_supabase_url
-   SUPABASE_ANON_KEY=your_supabase_anon_key
-   ```
+## 🚀 Como Rodar
 
-4. Start the development server:
-   ```bash
-   npx expo start
-   ```
+### Pré-requisitos
 
-## 🎨 UI Features
+```bash
+# Node.js (v14 ou superior)
+node -v
 
-- WhatsApp-inspired color scheme
-- Dark/Light mode support
-- Smooth animations
-- Responsive layouts
-- Native platform adaptations
+# Expo CLI
+npm install -g expo-cli
 
-## 👥 Author
+# Yarn (opcional, mas recomendado)
+npm install -g yarn
+```
 
-Igor Brandão
-- GitHub: [@igorbrandao18](https://github.com/igorbrandao18)
+### Configuração do Supabase
 
-## 📄 License
+1. Crie uma conta no [Supabase](https://supabase.com)
+2. Crie um novo projeto
+3. Copie as credenciais (URL e Anon Key)
+4. Crie um arquivo `.env` na raiz do projeto:
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+```env
+EXPO_PUBLIC_SUPABASE_URL=sua_url_aqui
+EXPO_PUBLIC_SUPABASE_ANON_KEY=sua_chave_aqui
+```
+
+### Instalação
+
+```bash
+# Clone o repositório
+git clone https://github.com/igorbrandao/flashchat.git
+
+# Entre na pasta
+cd flashchat
+
+# Instale as dependências
+yarn install
+# ou
+npm install
+
+# Inicie o projeto
+yarn start
+# ou
+npm start
+```
+
+### 📱 Rodando no Dispositivo
+
+1. Baixe o app **Expo Go**:
+   - [Android Play Store](https://play.google.com/store/apps/details?id=host.exp.exponent)
+   - [iOS App Store](https://apps.apple.com/app/expo-go/id982107779)
+
+2. Escaneie o QR Code que aparece no terminal ou na página web do Expo
+
+## 🎯 Recursos Principais
+
+### Chat em Tempo Real
+- Mensagens aparecem instantaneamente
+- Indicadores de status (enviando, enviado, lido)
+- Ordenação cronológica das mensagens
+- Cache local para carregamento rápido
+
+### Mensagens de Voz
+- Gravação com um toque longo
+- Visualização do tempo de gravação
+- Forma de onda animada durante a reprodução
+- Upload automático para o Supabase Storage
+
+### UI/UX
+- Design responsivo
+- Animações suaves
+- Feedback tátil
+- Modo escuro/claro automático
+
+## 🤝 Contribuindo
+
+1. Fork o projeto
+2. Crie sua Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
+4. Push para a Branch (`git push origin feature/AmazingFeature`)
+5. Abra um Pull Request
+
+## 📝 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+
+## 👨‍💻 Autor
+
+**Igor Brandão**
+
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://linkedin.com/in/igorbrandao)
+[![GitHub](https://img.shields.io/badge/GitHub-100000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/igorbrandao)
+
+---
+
+<div align="center">
+  <p>Feito com ❤️ por Igor Brandão</p>
+  <p>
+    <a href="https://github.com/igorbrandao/flashchat/issues">Reportar Bug</a>
+    ·
+    <a href="https://github.com/igorbrandao/flashchat/issues">Sugerir Feature</a>
+  </p>
+</div> 

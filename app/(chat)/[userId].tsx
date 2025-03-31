@@ -9,12 +9,16 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Animated,
+  Keyboard,
+  Vibration,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { useMessages } from '@/hooks/useMessages';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAnimations } from '@/hooks/useAnimations';
 import { supabase } from '@/config/supabase';
 import Header from '@/components/Header';
 
@@ -31,8 +35,11 @@ export default function ChatScreen() {
   const [message, setMessage] = useState('');
   const [chatUser, setChatUser] = useState<ChatUser | null>(null);
   const [userLoading, setUserLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
   const { colors } = useTheme();
   const flatListRef = useRef<FlatList>(null);
+  const { messageAnimation, startEnterAnimation } = useAnimations();
+  const inputRef = useRef<TextInput>(null);
 
   const { messages, loading: messagesLoading, sendMessage } = useMessages({
     chatId: userId as string,
@@ -62,23 +69,37 @@ export default function ChatScreen() {
   }, [userId, session?.user?.id]);
 
   const handleSend = async () => {
-    if (!message.trim() || !session?.user?.id) return;
+    if (!message.trim() || !session?.user?.id || isSending) return;
 
     const trimmedMessage = message.trim();
     setMessage('');
-    await sendMessage(trimmedMessage);
+    setIsSending(true);
+    Keyboard.dismiss();
+    Vibration.vibrate(50); // Haptic feedback
+
+    try {
+      await sendMessage(trimmedMessage);
+      startEnterAnimation();
+    } catch (error) {
+      console.error('Error sending message:', error);
+      setMessage(trimmedMessage); // Restore message if failed
+    } finally {
+      setIsSending(false);
+    }
   };
 
-  const renderMessage = ({ item }: { item: any }) => {
+  const renderMessage = ({ item, index }: { item: any; index: number }) => {
     const isSender = item.sender_id === session?.user?.id;
+    const isLastMessage = index === messages.length - 1;
 
     return (
-      <View
+      <Animated.View
         style={[
           styles.messageContainer,
           isSender ? styles.sentMessage : styles.receivedMessage,
           {
             backgroundColor: isSender ? colors.secondary : colors.surface,
+            ...(isLastMessage ? messageAnimation : {}),
           },
         ]}
       >
@@ -90,19 +111,29 @@ export default function ChatScreen() {
         >
           {item.content}
         </Text>
-        <Text
-          style={[
-            styles.messageTime,
-            { color: isSender ? 'rgba(255,255,255,0.7)' : colors.textSecondary },
-          ]}
-        >
-          {new Date(item.created_at).toLocaleTimeString('pt-BR', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-          })}
-        </Text>
-      </View>
+        <View style={styles.messageFooter}>
+          <Text
+            style={[
+              styles.messageTime,
+              { color: isSender ? 'rgba(255,255,255,0.7)' : colors.textSecondary },
+            ]}
+          >
+            {new Date(item.created_at).toLocaleTimeString('pt-BR', {
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false,
+            })}
+          </Text>
+          {isSender && (
+            <Ionicons
+              name={item.read_at ? "checkmark-done" : "checkmark"}
+              size={16}
+              color={item.read_at ? "#34B7F1" : "rgba(255,255,255,0.7)"}
+              style={styles.readReceipt}
+            />
+          )}
+        </View>
+      </Animated.View>
     );
   };
 
@@ -146,8 +177,9 @@ export default function ChatScreen() {
         onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
         onLayout={() => flatListRef.current?.scrollToEnd()}
       />
-      <View style={[styles.inputContainer, { backgroundColor: colors.surface }]}>
+      <Animated.View style={[styles.inputContainer, { backgroundColor: colors.surface }]}>
         <TextInput
+          ref={inputRef}
           style={[
             styles.input,
             {
@@ -160,14 +192,26 @@ export default function ChatScreen() {
           placeholder="Type a message..."
           placeholderTextColor={colors.textSecondary}
           multiline
+          maxLength={1000}
         />
         <TouchableOpacity
-          style={[styles.sendButton, { backgroundColor: colors.secondary }]}
+          style={[
+            styles.sendButton,
+            {
+              backgroundColor: message.trim() ? colors.secondary : colors.textSecondary,
+              transform: [{ scale: message.trim() ? 1 : 0.9 }],
+            },
+          ]}
           onPress={handleSend}
+          disabled={!message.trim() || isSending}
         >
-          <Ionicons name="send" size={20} color="white" />
+          {isSending ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <Ionicons name="send" size={20} color="white" />
+          )}
         </TouchableOpacity>
-      </View>
+      </Animated.View>
     </KeyboardAvoidingView>
   );
 }
@@ -205,10 +249,17 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 16,
   },
+  messageFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 4,
+  },
   messageTime: {
     fontSize: 12,
-    marginTop: 4,
-    alignSelf: 'flex-end',
+  },
+  readReceipt: {
+    marginLeft: 4,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -222,6 +273,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginRight: 8,
     maxHeight: 100,
+    fontSize: 16,
   },
   sendButton: {
     width: 40,

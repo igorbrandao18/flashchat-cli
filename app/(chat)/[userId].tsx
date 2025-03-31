@@ -30,7 +30,8 @@ interface ChatUser {
 }
 
 export default function ChatScreen() {
-  const { userId } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const userId = typeof params.userId === 'string' ? params.userId : '';
   const { session } = useAuth();
   const [message, setMessage] = useState('');
   const [chatUser, setChatUser] = useState<ChatUser | null>(null);
@@ -41,14 +42,14 @@ export default function ChatScreen() {
   const { messageAnimation, startEnterAnimation } = useAnimations();
   const inputRef = useRef<TextInput>(null);
 
-  const { messages, loading: messagesLoading, sendMessage } = useMessages({
-    chatId: userId as string,
-    currentUserId: session?.user?.id || '',
-  });
+  console.log('Chat screen params:', { userId, sessionUserId: session?.user?.id });
 
   useEffect(() => {
-    if (!session?.user?.id) return;
-    
+    if (!userId || !session?.user?.id) {
+      console.error('Missing required IDs:', { userId, sessionUserId: session?.user?.id });
+      return;
+    }
+
     async function fetchChatUser() {
       const { data, error } = await supabase
         .from('profiles')
@@ -61,12 +62,18 @@ export default function ChatScreen() {
         return;
       }
 
+      console.log('Chat user fetched:', data);
       setChatUser(data);
       setUserLoading(false);
     }
 
     fetchChatUser();
   }, [userId, session?.user?.id]);
+
+  const { messages, loading: messagesLoading, sendMessage } = useMessages({
+    chatId: userId,
+    currentUserId: session?.user?.id || '',
+  });
 
   const handleSend = async () => {
     if (!message.trim() || !session?.user?.id || isSending) return;

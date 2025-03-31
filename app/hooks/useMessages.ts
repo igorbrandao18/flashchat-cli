@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/config/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -20,21 +20,119 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchMessages = useCallback(async () => {
+    if (!chatId || !currentUserId) {
+      console.error('Invalid IDs:', { chatId, currentUserId });
+      setLoading(false);
+      return;
+    }
+
+    try {
+      console.log('Fetching messages for chat:', { chatId, currentUserId });
+      const { data: sentMessages, error: sentError } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('sender_id', currentUserId)
+        .eq('receiver_id', chatId);
+
+      if (sentError) {
+        console.error('Error fetching sent messages:', sentError);
+        return;
+      }
+
+      const { data: receivedMessages, error: receivedError } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('sender_id', chatId)
+        .eq('receiver_id', currentUserId);
+
+      if (receivedError) {
+        console.error('Error fetching received messages:', receivedError);
+        return;
+      }
+
+      const allMessages = [...(sentMessages || []), ...(receivedMessages || [])].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+
+      console.log('Fetched messages:', allMessages.length, 'messages');
+      setMessages(allMessages);
+      setLoading(false);
+      if (allMessages.length) {
+        markMessagesAsRead(allMessages);
+        await cacheMessages(allMessages);
+      }
+    } catch (error) {
+      console.error('Error in fetchMessages:', error);
+      setLoading(false);
+    }
+  }, [chatId, currentUserId]);
+
   useEffect(() => {
+    if (!chatId || !currentUserId) {
+      console.error('Invalid IDs:', { chatId, currentUserId });
+      return;
+    }
+
+    console.log('Initializing chat with:', { chatId, currentUserId });
     loadCachedMessages();
     fetchMessages();
-    subscribeToMessages();
+
+    // Subscribe to realtime updates
+    const channel = supabase.channel(`chat:${chatId}`);
+
+    channel
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+          filter: `or(and(sender_id.eq.${currentUserId},receiver_id.eq.${chatId}),and(sender_id.eq.${chatId},receiver_id.eq.${currentUserId}))`,
+        },
+        (payload) => {
+          console.log('Realtime message update:', payload);
+          
+          if (payload.eventType === 'INSERT') {
+            const newMessage = payload.new as Message;
+            console.log('New message received:', newMessage);
+            
+            setMessages((current) => {
+              // Avoid duplicate messages
+              if (current.some(msg => msg.id === newMessage.id)) {
+                return current;
+              }
+              const updatedMessages = [...current, newMessage];
+              cacheMessages(updatedMessages);
+              return updatedMessages;
+            });
+
+            // Mark message as read if we're the receiver
+            if (newMessage.receiver_id === currentUserId) {
+              markMessagesAsRead([newMessage]);
+            }
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('Channel subscription status:', status);
+      });
 
     return () => {
-      supabase.channel('messages').unsubscribe();
+      console.log('Cleaning up chat subscription');
+      channel.unsubscribe();
     };
-  }, [chatId]);
+  }, [chatId, currentUserId, fetchMessages]);
 
   const loadCachedMessages = async () => {
+    if (!chatId) return;
+
     try {
       const cached = await AsyncStorage.getItem(`@messages:${chatId}`);
       if (cached) {
-        setMessages(JSON.parse(cached));
+        const parsedMessages = JSON.parse(cached);
+        console.log('Loaded cached messages:', parsedMessages.length);
+        setMessages(parsedMessages);
       }
     } catch (error) {
       console.error('Error loading cached messages:', error);
@@ -42,109 +140,85 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
   };
 
   const cacheMessages = async (newMessages: Message[]) => {
+    if (!chatId) return;
+
     try {
       await AsyncStorage.setItem(
         `@messages:${chatId}`,
         JSON.stringify(newMessages)
       );
+      console.log('Messages cached successfully');
     } catch (error) {
       console.error('Error caching messages:', error);
     }
   };
 
-  const fetchMessages = async () => {
-    const { data, error } = await supabase
-      .from('messages')
-      .select('*')
-      .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
-      .order('created_at', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching messages:', error);
-      return;
-    }
-
-    setMessages(data || []);
-    cacheMessages(data || []);
-    setLoading(false);
-    markMessagesAsRead(data || []);
-  };
-
-  const subscribeToMessages = () => {
-    const channel = supabase
-      .channel('messages')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'messages',
-          filter: `sender_id=eq.${currentUserId},receiver_id=eq.${chatId}`,
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            setMessages((current) => {
-              const newMessages = [...current, payload.new as Message];
-              cacheMessages(newMessages);
-              return newMessages;
-            });
-          } else if (payload.eventType === 'UPDATE') {
-            setMessages((current) =>
-              current.map((msg) =>
-                msg.id === payload.new.id ? (payload.new as Message) : msg
-              )
-            );
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      channel.unsubscribe();
-    };
-  };
-
   const markMessagesAsRead = async (messagesToMark: Message[]) => {
+    if (!currentUserId) return;
+
     const unreadMessages = messagesToMark.filter(
       (msg) => msg.receiver_id === currentUserId && !msg.read_at
     );
 
     if (unreadMessages.length === 0) return;
 
-    const { error } = await supabase
-      .from('messages')
-      .update({ read_at: new Date().toISOString() })
-      .in(
-        'id',
-        unreadMessages.map((msg) => msg.id)
-      );
+    try {
+      console.log('Marking messages as read:', unreadMessages.length);
+      const { error } = await supabase
+        .from('messages')
+        .update({ read_at: new Date().toISOString() })
+        .in(
+          'id',
+          unreadMessages.map((msg) => msg.id)
+        );
 
-    if (error) {
-      console.error('Error marking messages as read:', error);
+      if (error) {
+        console.error('Error marking messages as read:', error);
+      }
+    } catch (error) {
+      console.error('Error in markMessagesAsRead:', error);
     }
   };
 
   const sendMessage = async (content: string) => {
-    const message = {
-      content,
-      sender_id: currentUserId,
-      receiver_id: chatId,
-      created_at: new Date().toISOString(),
-      read_at: null,
-    };
-
-    const { data, error } = await supabase
-      .from('messages')
-      .insert([message])
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error sending message:', error);
+    if (!chatId || !currentUserId || !content.trim()) {
+      console.error('Invalid message data:', { chatId, currentUserId, content });
       return null;
     }
 
-    return data;
+    try {
+      console.log('Sending message:', content, 'from:', currentUserId, 'to:', chatId);
+      const newMessage = {
+        content: content.trim(),
+        sender_id: currentUserId,
+        receiver_id: chatId,
+      };
+
+      const { data, error } = await supabase
+        .from('messages')
+        .insert([newMessage])
+        .select('*')
+        .single();
+
+      if (error) {
+        console.error('Error sending message:', error);
+        return null;
+      }
+
+      console.log('Message sent successfully:', data);
+      
+      // Update local messages immediately
+      setMessages(current => {
+        const updatedMessages = [...current, data];
+        cacheMessages(updatedMessages);
+        return updatedMessages;
+      });
+
+      return data;
+    } catch (error) {
+      console.error('Error in sendMessage:', error);
+      return null;
+    }
   };
 
   return {

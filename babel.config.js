@@ -3,16 +3,8 @@ module.exports = function (api) {
   return {
     presets: ['babel-preset-expo'],
     plugins: [
-      'expo-router/babel',
-      [
-        'module-resolver',
-        {
-          root: ['.'],
-          alias: {
-            '@': './app',
-          },
-        },
-      ],
+      'react-native-paper/babel',
+      ['expo-router/babel', { root: './src/app' }],
     ],
   };
 }; 

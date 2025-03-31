@@ -60,24 +60,42 @@ export default function ConversationsScreen() {
     fetchUsers();
 
     // Subscribe to presence changes
-    const channel = supabase.channel('online-users');
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState();
-        const updateUsers = (currentUsers: User[]) => 
-          currentUsers.map(user => ({
-            ...user,
-            online: Boolean(state[user.id])
-          }));
-        
-        setUsers(updateUsers);
-        setFilteredUsers(current => updateUsers(current));
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await channel.track({ user_id: session.user.id });
-        }
-      });
+    const channel = supabase.channel('online-users', {
+      config: {
+        presence: {
+          key: session.user.id,
+        },
+      },
+    });
+
+    // Track current user's presence
+    channel.subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await channel.track({
+          online_at: new Date().toISOString(),
+          user_id: session.user.id,
+        });
+      }
+    });
+
+    // Listen to presence changes
+    channel.on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      const onlineUserIds = new Set(
+        Object.values(state)
+          .flat()
+          .map((presence: any) => presence.user_id)
+      );
+
+      const updateUsers = (currentUsers: User[]) =>
+        currentUsers.map(user => ({
+          ...user,
+          online: onlineUserIds.has(user.id),
+        }));
+
+      setUsers(updateUsers);
+      setFilteredUsers(current => updateUsers(current));
+    });
 
     return () => {
       channel.unsubscribe();

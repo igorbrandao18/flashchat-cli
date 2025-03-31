@@ -37,6 +37,9 @@ export default function LoginScreen() {
 
     if (error) {
       Alert.alert('Login Error', error.message);
+    } else {
+      // Redirect to chat screen on successful login
+      router.replace('/(chat)/conversations');
     }
   };
 

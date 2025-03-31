@@ -14,6 +14,7 @@ export function useAuth() {
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Initial session:', session);
       setSession(session);
       setLoading(false);
     });
@@ -22,6 +23,7 @@ export function useAuth() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log('Auth state changed:', _event, session);
       setSession(session);
       setLoading(false);
     });
@@ -50,14 +52,23 @@ export function useAuth() {
 
   const signIn = async (email: string, password: string): Promise<AuthResponse> => {
     try {
+      console.log('Attempting login with:', email);
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
+      console.log('Login response:', data, error);
       if (error) throw error;
+
+      // Update session immediately after successful login
+      if (data.session) {
+        setSession(data.session);
+      }
+
       return { data, error: null };
     } catch (error) {
+      console.error('Login error:', error);
       return { data: null, error: error as AuthError };
     }
   };
@@ -66,6 +77,7 @@ export function useAuth() {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+      setSession(null);
       return { error: null };
     } catch (error) {
       return { error: error as AuthError };

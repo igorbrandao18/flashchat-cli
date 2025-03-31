@@ -3,6 +3,8 @@ import { View, FlatList, Text, StyleSheet, TouchableOpacity } from 'react-native
 import { router } from 'expo-router';
 import { supabase } from '@/config/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { Ionicons } from '@expo/vector-icons';
+import Header from '@/components/Header';
 
 interface Message {
   id: string;
@@ -90,6 +92,15 @@ export default function ConversationsScreen() {
     fetchConversations();
   }, [session?.user?.id]);
 
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+  };
+
   const renderItem = ({ item }: { item: Conversation }) => (
     <TouchableOpacity
       style={styles.conversationItem}
@@ -101,7 +112,14 @@ export default function ConversationsScreen() {
         </Text>
       </View>
       <View style={styles.conversationInfo}>
-        <Text style={styles.userName}>{item.user.full_name}</Text>
+        <View style={styles.conversationHeader}>
+          <Text style={styles.userName}>{item.user.full_name}</Text>
+          {item.lastMessage && (
+            <Text style={styles.messageTime}>
+              {formatTime(item.lastMessage.created_at)}
+            </Text>
+          )}
+        </View>
         {item.lastMessage && (
           <Text style={styles.lastMessage} numberOfLines={1}>
             {item.lastMessage.content}
@@ -114,19 +132,29 @@ export default function ConversationsScreen() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <Text>Loading conversations...</Text>
+        <Header />
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading conversations...</Text>
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      <Header />
       <FlatList
         data={conversations}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
       />
+      <TouchableOpacity 
+        style={styles.fab}
+        onPress={() => router.push('/(chat)/new-chat')}
+      >
+        <Ionicons name="chatbubble-ellipses" size={24} color="white" />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -134,51 +162,81 @@ export default function ConversationsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#FFFFFF',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#075E54',
+    fontSize: 16,
   },
   listContent: {
-    padding: 10,
+    backgroundColor: '#FFFFFF',
   },
   conversationItem: {
     flexDirection: 'row',
-    padding: 15,
-    backgroundColor: 'white',
-    borderRadius: 10,
-    marginBottom: 10,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8E8E8',
+    backgroundColor: '#FFFFFF',
   },
   avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#007AFF',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#25D366',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 15,
+    marginRight: 12,
   },
   avatarText: {
     color: 'white',
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
   },
   conversationInfo: {
     flex: 1,
+    justifyContent: 'center',
+  },
+  conversationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
   },
   userName: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
+    color: '#000000',
+  },
+  messageTime: {
+    fontSize: 12,
+    color: '#667781',
   },
   lastMessage: {
     fontSize: 14,
-    color: '#666',
+    color: '#667781',
+  },
+  fab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 16,
+    backgroundColor: '#25D366',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
 }); 

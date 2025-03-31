@@ -7,11 +7,30 @@ import { useTheme } from '@/contexts/ThemeContext';
 interface HeaderProps {
   title?: string;
   showBackButton?: boolean;
+  showSearch?: boolean;
+  isSearching?: boolean;
+  onSearchPress?: () => void;
+  onBackPress?: () => void;
 }
 
-export default function Header({ title = "FlashChat", showBackButton = false }: HeaderProps) {
+export default function Header({ 
+  title = "FlashChat", 
+  showBackButton = false,
+  showSearch = false,
+  isSearching = false,
+  onSearchPress,
+  onBackPress,
+}: HeaderProps) {
   const router = useRouter();
   const { colors, theme, toggleTheme } = useTheme();
+
+  const handleBack = () => {
+    if (isSearching && onBackPress) {
+      onBackPress();
+    } else {
+      router.back();
+    }
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.primary }]}>
@@ -20,31 +39,39 @@ export default function Header({ title = "FlashChat", showBackButton = false }: 
         barStyle={theme === 'dark' ? "light-content" : "dark-content"} 
       />
       <View style={styles.content}>
-        {showBackButton ? (
+        {(showBackButton || isSearching) ? (
           <TouchableOpacity 
             style={styles.backButton} 
-            onPress={() => router.back()}
+            onPress={handleBack}
           >
-            <Ionicons name="arrow-back" size={24} color={theme === 'dark' ? 'white' : 'white'} />
+            <Ionicons name="arrow-back" size={24} color="white" />
           </TouchableOpacity>
         ) : null}
-        <Text style={[styles.title, showBackButton && styles.titleWithBack, { color: 'white' }]}>
-          {title}
-        </Text>
+        {!isSearching && (
+          <Text style={[styles.title, (showBackButton || isSearching) && styles.titleWithBack, { color: 'white' }]}>
+            {title}
+          </Text>
+        )}
         <View style={styles.actions}>
-          <TouchableOpacity style={styles.actionButton} onPress={toggleTheme}>
-            <Ionicons 
-              name={theme === 'dark' ? "sunny" : "moon"} 
-              size={24} 
-              color="white" 
-            />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="search" size={24} color="white" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="ellipsis-vertical" size={24} color="white" />
-          </TouchableOpacity>
+          {!isSearching && (
+            <>
+              {showSearch && (
+                <TouchableOpacity 
+                  style={styles.actionButton}
+                  onPress={onSearchPress}
+                >
+                  <Ionicons name="search" size={24} color="white" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.actionButton} onPress={toggleTheme}>
+                <Ionicons 
+                  name={theme === 'dark' ? "sunny" : "moon"} 
+                  size={24} 
+                  color="white" 
+                />
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </View>
     </View>

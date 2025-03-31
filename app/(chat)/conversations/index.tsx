@@ -6,11 +6,14 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  TextInput,
+  Keyboard,
 } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/config/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/contexts/ThemeContext';
+import { Ionicons } from '@expo/vector-icons';
 import Header from '@/components/Header';
 
 interface User {
@@ -23,6 +26,9 @@ interface User {
 
 export default function ConversationsScreen() {
   const [users, setUsers] = useState<User[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const { session } = useAuth();
   const [loading, setLoading] = useState(true);
   const { colors } = useTheme();
@@ -45,7 +51,9 @@ export default function ConversationsScreen() {
         return;
       }
 
-      setUsers(data.map(user => ({ ...user, online: false })) || []);
+      const usersWithOnline = data.map(user => ({ ...user, online: false })) || [];
+      setUsers(usersWithOnline);
+      setFilteredUsers(usersWithOnline);
       setLoading(false);
     }
 
@@ -56,12 +64,14 @@ export default function ConversationsScreen() {
     channel
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
-        setUsers(currentUsers => 
+        const updateUsers = (currentUsers: User[]) => 
           currentUsers.map(user => ({
             ...user,
             online: Boolean(state[user.id])
-          }))
-        );
+          }));
+        
+        setUsers(updateUsers);
+        setFilteredUsers(current => updateUsers(current));
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
@@ -73,6 +83,20 @@ export default function ConversationsScreen() {
       channel.unsubscribe();
     };
   }, [session?.user?.id]);
+
+  const handleSearch = (text: string) => {
+    setSearchQuery(text);
+    if (!text.trim()) {
+      setFilteredUsers(users);
+      return;
+    }
+
+    const query = text.toLowerCase();
+    const filtered = users.filter(user => 
+      user.full_name.toLowerCase().includes(query)
+    );
+    setFilteredUsers(filtered);
+  };
 
   const formatLastSeen = (lastSeen: string | null) => {
     if (!lastSeen) return 'Never seen';
@@ -99,7 +123,10 @@ export default function ConversationsScreen() {
           borderBottomColor: colors.border 
         }
       ]}
-      onPress={() => router.push(`/(chat)/${item.id}`)}
+      onPress={() => {
+        Keyboard.dismiss();
+        router.push(`/(chat)/${item.id}`);
+      }}
     >
       <View style={[styles.avatar, { backgroundColor: colors.secondary }]}>
         <Text style={styles.avatarText}>
@@ -125,6 +152,30 @@ export default function ConversationsScreen() {
     </TouchableOpacity>
   );
 
+  const renderSearchBar = () => (
+    <View style={[styles.searchContainer, { backgroundColor: colors.surface }]}>
+      <Ionicons name="search" size={20} color={colors.textSecondary} />
+      <TextInput
+        style={[styles.searchInput, { color: colors.text }]}
+        placeholder="Search users..."
+        placeholderTextColor={colors.textSecondary}
+        value={searchQuery}
+        onChangeText={handleSearch}
+        autoFocus
+      />
+      {searchQuery ? (
+        <TouchableOpacity
+          onPress={() => {
+            setSearchQuery('');
+            setFilteredUsers(users);
+          }}
+        >
+          <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -136,22 +187,34 @@ export default function ConversationsScreen() {
     );
   }
 
-  const onlineUsers = users.filter(user => user.online);
-  const offlineUsers = users.filter(user => !user.online);
+  const onlineUsers = filteredUsers.filter(user => user.online);
+  const offlineUsers = filteredUsers.filter(user => !user.online);
   const sortedUsers = [...onlineUsers, ...offlineUsers];
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Header />
+      <Header 
+        showSearch 
+        onSearchPress={() => setIsSearching(true)}
+        isSearching={isSearching}
+        onBackPress={() => {
+          setIsSearching(false);
+          setSearchQuery('');
+          setFilteredUsers(users);
+          Keyboard.dismiss();
+        }}
+      />
       <FlatList
         data={sortedUsers}
         renderItem={renderUser}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.listContent, { backgroundColor: colors.background }]}
         ListHeaderComponent={
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-            {onlineUsers.length} online
-          </Text>
+          isSearching ? renderSearchBar() : (
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+              {onlineUsers.length} online
+            </Text>
+          )
         }
       />
     </View>
@@ -170,6 +233,21 @@ const styles = StyleSheet.create({
   listContent: {
     flexGrow: 1,
     paddingTop: 16,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    margin: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 24,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    marginLeft: 8,
+    marginRight: 8,
+    padding: 0,
   },
   sectionTitle: {
     fontSize: 14,

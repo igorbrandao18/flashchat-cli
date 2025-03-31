@@ -13,6 +13,9 @@ export default function ChatLayout() {
       <Stack.Screen
         name="[userId]"
       />
+      <Stack.Screen
+        name="new-chat"
+      />
     </Stack>
   );
 } 

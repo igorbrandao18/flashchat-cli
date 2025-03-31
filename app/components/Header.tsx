@@ -1,69 +1,80 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '@/hooks/useAuth';
+import { useRouter } from 'expo-router';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface HeaderProps {
   title?: string;
   showBackButton?: boolean;
 }
 
-export default function Header({ title = "WhatsApp", showBackButton = false }: HeaderProps) {
-  const { signOut } = useAuth();
+export default function Header({ title = "FlashChat", showBackButton = false }: HeaderProps) {
+  const router = useRouter();
+  const { colors, theme, toggleTheme } = useTheme();
 
   return (
-    <>
-      <StatusBar backgroundColor="#075E54" barStyle="light-content" />
-      <View style={styles.container}>
-        <View style={styles.content}>
-          <Text style={styles.title}>{title}</Text>
-          <View style={styles.actions}>
-            <TouchableOpacity style={styles.actionButton}>
-              <Ionicons name="camera-outline" size={22} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton}>
-              <Ionicons name="search" size={22} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton} onPress={signOut}>
-              <Ionicons name="ellipsis-vertical" size={22} color="white" />
-            </TouchableOpacity>
-          </View>
-        </View>
-        <View style={styles.tabs}>
-          <TouchableOpacity style={styles.tab}>
-            <Ionicons name="people" size={24} color="rgba(255,255,255,0.6)" />
+    <View style={[styles.container, { backgroundColor: colors.primary }]}>
+      <StatusBar 
+        backgroundColor={colors.primary} 
+        barStyle={theme === 'dark' ? "light-content" : "dark-content"} 
+      />
+      <View style={styles.content}>
+        {showBackButton ? (
+          <TouchableOpacity 
+            style={styles.backButton} 
+            onPress={() => router.back()}
+          >
+            <Ionicons name="arrow-back" size={24} color={theme === 'dark' ? 'white' : 'white'} />
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.tab, styles.activeTab]}>
-            <Text style={styles.activeTabText}>CHATS</Text>
+        ) : null}
+        <Text style={[styles.title, showBackButton && styles.titleWithBack, { color: 'white' }]}>
+          {title}
+        </Text>
+        <View style={styles.actions}>
+          <TouchableOpacity style={styles.actionButton} onPress={toggleTheme}>
+            <Ionicons 
+              name={theme === 'dark' ? "sunny" : "moon"} 
+              size={24} 
+              color="white" 
+            />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.tab}>
-            <Text style={styles.tabText}>STATUS</Text>
+          <TouchableOpacity style={styles.actionButton}>
+            <Ionicons name="search" size={24} color="white" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.tab}>
-            <Text style={styles.tabText}>CALLS</Text>
+          <TouchableOpacity style={styles.actionButton}>
+            <Ionicons name="ellipsis-vertical" size={24} color="white" />
           </TouchableOpacity>
         </View>
       </View>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#075E54',
     paddingTop: Platform.OS === 'ios' ? 44 : StatusBar.currentHeight,
   },
   content: {
     height: 56,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   title: {
-    color: '#FFFFFF',
+    flex: 1,
     fontSize: 20,
     fontWeight: '500',
+    marginLeft: 16,
+  },
+  titleWithBack: {
+    marginLeft: 0,
   },
   actions: {
     flexDirection: 'row',
@@ -74,31 +85,5 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  tabs: {
-    flexDirection: 'row',
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'space-around',
-  },
-  tab: {
-    flex: 1,
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  activeTab: {
-    borderBottomWidth: 3,
-    borderBottomColor: '#FFFFFF',
-  },
-  tabText: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  activeTabText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '500',
   },
 }); 

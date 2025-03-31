@@ -1,57 +1,34 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack, Slot, useRouter, useSegments } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
+import { Stack } from 'expo-router';
 import { useEffect } from 'react';
-import 'react-native-reanimated';
-
-import { useColorScheme } from './hooks/useColorScheme';
-import { useAuth } from './hooks/useAuth';
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+import { useSegments, useRouter } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-
   const { session, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loaded || loading) return;
+    if (loading) return;
 
     const inAuthGroup = segments[0] === '(auth)';
-
     if (session?.user) {
-      // If user is authenticated, redirect to chat
       if (inAuthGroup) {
         router.replace('/(chat)/conversations');
       }
     } else {
-      // If user is not authenticated, redirect to login
       if (!inAuthGroup) {
         router.replace('/(auth)/login');
       }
     }
-  }, [session, loading, segments, loaded]);
+  }, [session, loading]);
 
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
-
-  if (!loaded || loading) {
-    return null;
-  }
+  if (loading) return null;
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Slot />
+    <ThemeProvider>
+      <Stack screenOptions={{ headerShown: false }} />
     </ThemeProvider>
   );
 }

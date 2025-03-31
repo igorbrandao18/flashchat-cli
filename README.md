@@ -66,56 +66,129 @@
 
 ### Pré-requisitos
 
+Antes de começar, certifique-se de ter instalado:
+
 ```bash
-# Node.js (v14 ou superior)
+# Verifique a versão do Node.js (v14 ou superior)
 node -v
 
-# Expo CLI
+# Instale o Expo CLI globalmente
 npm install -g expo-cli
 
-# Yarn (opcional, mas recomendado)
+# Instale o Yarn (opcional, mas recomendado)
 npm install -g yarn
+
+# Para iOS: Xcode (apenas para Mac)
+xcode-select --install
+
+# Para Android: Android Studio e variáveis de ambiente
+# ANDROID_HOME e JAVA_HOME configuradas
 ```
 
-### Configuração do Supabase
+### Configuração do Ambiente
 
-1. Crie uma conta no [Supabase](https://supabase.com)
-2. Crie um novo projeto
-3. Copie as credenciais (URL e Anon Key)
-4. Crie um arquivo `.env` na raiz do projeto:
+1. **Supabase Setup**:
+   - Crie uma conta no [Supabase](https://supabase.com)
+   - Crie um novo projeto
+   - Vá em Project Settings > API
+   - Copie a URL e a Anon Key
 
-```env
-EXPO_PUBLIC_SUPABASE_URL=sua_url_aqui
-EXPO_PUBLIC_SUPABASE_ANON_KEY=sua_chave_aqui
-```
+2. **Configuração Local**:
+   ```bash
+   # Clone o repositório
+   git clone https://github.com/igorbrandao/flashchat.git
+   cd flashchat
 
-### Instalação
+   # Crie o arquivo .env
+   touch .env
+   ```
+
+3. **Configure as Variáveis de Ambiente**:
+   Adicione ao arquivo `.env`:
+   ```env
+   EXPO_PUBLIC_SUPABASE_URL=sua_url_aqui
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=sua_chave_aqui
+   ```
+
+### Instalação e Execução
+
+1. **Instale as Dependências**:
+   ```bash
+   # Com Yarn (recomendado)
+   yarn install
+
+   # Ou com NPM
+   npm install
+   ```
+
+2. **Inicie o Projeto**:
+   ```bash
+   # Com Yarn
+   yarn start
+
+   # Ou com NPM
+   npm start
+
+   # Ou com Expo diretamente
+   expo start
+   ```
+
+### 📱 Rodando no Dispositivo Físico
+
+1. **Instale o Expo Go**:
+   - 📱 iOS: [App Store](https://apps.apple.com/app/expo-go/id982107779)
+   - 🤖 Android: [Play Store](https://play.google.com/store/apps/details?id=host.exp.exponent)
+
+2. **Conecte o App**:
+   - Escaneie o QR Code que aparece no terminal
+   - iOS: use a câmera do iPhone
+   - Android: use o app Expo Go para escanear
+
+3. **Desenvolvimento**:
+   - O app irá recarregar automaticamente quando salvar alterações
+   - Agite o dispositivo para abrir o menu de desenvolvimento
+   - Pressione R duas vezes para forçar reload
+
+### 🔧 Rodando em Emuladores
+
+1. **iOS Simulator (Mac only)**:
+   ```bash
+   # Inicie o simulador iOS
+   yarn ios
+   # ou
+   npm run ios
+   ```
+
+2. **Android Emulator**:
+   ```bash
+   # Certifique-se que um emulador está rodando
+   yarn android
+   # ou
+   npm run android
+   ```
+
+### 🐛 Debugging
+
+- Agite o dispositivo ou pressione `Cmd + D` (iOS) / `Ctrl + M` (Android)
+- Selecione "Debug Remote JS" para abrir o Chrome DevTools
+- Use o console para ver logs e erros
+- Instale o [React Native Debugger](https://github.com/jhen0409/react-native-debugger) para uma experiência melhor
+
+### 📝 Comandos Úteis
 
 ```bash
-# Clone o repositório
-git clone https://github.com/igorbrandao/flashchat.git
+# Limpar cache do Metro
+yarn start --clear
 
-# Entre na pasta
-cd flashchat
+# Verificar problemas de TypeScript
+yarn typescript
 
-# Instale as dependências
-yarn install
-# ou
-npm install
+# Rodar linter
+yarn lint
 
-# Inicie o projeto
-yarn start
-# ou
-npm start
+# Gerar build de produção
+yarn build
 ```
-
-### 📱 Rodando no Dispositivo
-
-1. Baixe o app **Expo Go**:
-   - [Android Play Store](https://play.google.com/store/apps/details?id=host.exp.exponent)
-   - [iOS App Store](https://apps.apple.com/app/expo-go/id982107779)
-
-2. Escaneie o QR Code que aparece no terminal ou na página web do Expo
 
 ## 🎯 Recursos Principais
 

@@ -56,7 +56,18 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
       );
 
       console.log('Fetched messages:', allMessages.length, 'messages');
-      setMessages(allMessages);
+      
+      // Merge with existing messages to avoid overwriting cached ones
+      setMessages(current => {
+        const merged = [...current];
+        allMessages.forEach(msg => {
+          if (!merged.some(m => m.id === msg.id)) {
+            merged.push(msg);
+          }
+        });
+        return merged.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      });
+      
       setLoading(false);
       if (allMessages.length) {
         markMessagesAsRead(allMessages);
@@ -88,35 +99,55 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
           event: '*',
           schema: 'public',
           table: 'messages',
-          filter: `or(and(sender_id.eq.${currentUserId},receiver_id.eq.${chatId}),and(sender_id.eq.${chatId},receiver_id.eq.${currentUserId}))`,
+          filter: `sender_id=eq.${currentUserId},receiver_id=eq.${chatId}`,
         },
         (payload) => {
-          console.log('Realtime message update:', payload);
-          
-          if (payload.eventType === 'INSERT') {
-            const newMessage = payload.new as Message;
-            console.log('New message received:', newMessage);
-            
-            setMessages((current) => {
-              // Avoid duplicate messages
-              if (current.some(msg => msg.id === newMessage.id)) {
-                return current;
-              }
-              const updatedMessages = [...current, newMessage];
-              cacheMessages(updatedMessages);
-              return updatedMessages;
-            });
-
-            // Mark message as read if we're the receiver
-            if (newMessage.receiver_id === currentUserId) {
-              markMessagesAsRead([newMessage]);
-            }
-          }
+          console.log('Realtime message update (sent):', payload);
+          handleMessageUpdate(payload);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+          filter: `sender_id=eq.${chatId},receiver_id=eq.${currentUserId}`,
+        },
+        (payload) => {
+          console.log('Realtime message update (received):', payload);
+          handleMessageUpdate(payload);
         }
       )
       .subscribe((status) => {
         console.log('Channel subscription status:', status);
       });
+
+    const handleMessageUpdate = (payload: any) => {
+      if (payload.eventType === 'INSERT') {
+        const newMessage = payload.new as Message;
+        console.log('Processing new message:', newMessage);
+        
+        setMessages((current) => {
+          // Avoid duplicate messages
+          if (current.some(msg => msg.id === newMessage.id)) {
+            console.log('Duplicate message detected, skipping update');
+            return current;
+          }
+          console.log('Adding new message to state');
+          const updatedMessages = [...current, newMessage].sort(
+            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+          cacheMessages(updatedMessages);
+          return updatedMessages;
+        });
+
+        // Mark message as read if we're the receiver
+        if (newMessage.receiver_id === currentUserId) {
+          markMessagesAsRead([newMessage]);
+        }
+      }
+    };
 
     return () => {
       console.log('Cleaning up chat subscription');
@@ -202,6 +233,11 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
 
       if (error) {
         console.error('Error sending message:', error);
+        return null;
+      }
+
+      if (!data) {
+        console.error('No data returned from message insert');
         return null;
       }
 

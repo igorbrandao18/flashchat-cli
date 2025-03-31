@@ -85,8 +85,18 @@ export default function ChatScreen() {
     Vibration.vibrate(50); // Haptic feedback
 
     try {
-      await sendMessage(trimmedMessage);
-      startEnterAnimation();
+      const sentMessage = await sendMessage(trimmedMessage);
+      if (sentMessage) {
+        console.log('Message sent and added to state:', sentMessage);
+        startEnterAnimation();
+        // Scroll to bottom after a short delay to ensure the new message is rendered
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      } else {
+        console.error('Failed to send message');
+        setMessage(trimmedMessage); // Restore message if failed
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       setMessage(trimmedMessage); // Restore message if failed
@@ -149,7 +159,11 @@ export default function ChatScreen() {
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <Header title="Loading..." showBackButton />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator 
+            testID="loading-indicator"
+            size="large" 
+            color={colors.primary} 
+          />
         </View>
       </View>
     );
@@ -181,8 +195,19 @@ export default function ChatScreen() {
         renderItem={renderMessage}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.messagesList}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
-        onLayout={() => flatListRef.current?.scrollToEnd()}
+        onContentSizeChange={() => {
+          console.log('Content size changed, scrolling to bottom');
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }}
+        onLayout={() => {
+          console.log('Layout changed, scrolling to bottom');
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }}
+        inverted={false}
+        maintainVisibleContentPosition={{
+          minIndexForVisible: 0,
+          autoscrollToTopThreshold: 10,
+        }}
       />
       <Animated.View style={[styles.inputContainer, { backgroundColor: colors.surface }]}>
         <TextInput
@@ -202,6 +227,7 @@ export default function ChatScreen() {
           maxLength={1000}
         />
         <TouchableOpacity
+          testID="send-button"
           style={[
             styles.sendButton,
             {

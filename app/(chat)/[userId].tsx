@@ -231,8 +231,8 @@ export default function ChatScreen() {
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
       <Header 
         title={chatUser.full_name} 
@@ -265,9 +265,11 @@ export default function ChatScreen() {
                 <ActivityIndicator size="small" color={colors.primary} />
               </View>
             ) : (
-              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                No messages yet
-              </Text>
+              <View style={styles.emptyContainer}>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                  No messages yet
+                </Text>
+              </View>
             )
           }
         />
@@ -282,45 +284,43 @@ export default function ChatScreen() {
         )}
       </View>
 
-      <View style={[styles.inputWrapper, { backgroundColor: colors.surface }]}>
-        <SafeAreaView edges={['bottom']}>
-          <View style={styles.inputContainer}>
-            <TextInput
-              ref={inputRef}
-              style={[
-                styles.input,
-                {
-                  backgroundColor: colors.inputBackground,
-                  color: colors.text,
-                },
-              ]}
-              value={message}
-              onChangeText={setMessage}
-              placeholder="Type a message..."
-              placeholderTextColor={colors.textSecondary}
-              multiline
-              maxLength={1000}
-              onSubmitEditing={handleSend}
-              returnKeyType="send"
-              blurOnSubmit={false}
-              enablesReturnKeyAutomatically
-            />
-            <TouchableOpacity
-              style={[
-                styles.sendButton,
-                {
-                  backgroundColor: message.trim() ? colors.secondary : colors.textSecondary,
-                  opacity: message.trim() ? 1 : 0.5,
-                },
-              ]}
-              onPress={handleSend}
-              disabled={!message.trim()}
-            >
-              <Ionicons name="send" size={20} color="white" />
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      </View>
+      <SafeAreaView edges={['bottom']} style={[styles.inputWrapper, { backgroundColor: colors.surface }]}>
+        <View style={styles.inputContainer}>
+          <TextInput
+            ref={inputRef}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.inputBackground,
+                color: colors.text,
+              },
+            ]}
+            value={message}
+            onChangeText={setMessage}
+            placeholder="Type a message..."
+            placeholderTextColor={colors.textSecondary}
+            multiline
+            maxLength={1000}
+            onSubmitEditing={handleSend}
+            returnKeyType="send"
+            blurOnSubmit={false}
+            enablesReturnKeyAutomatically
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              {
+                backgroundColor: message.trim() ? colors.secondary : colors.textSecondary,
+                opacity: message.trim() ? 1 : 0.5,
+              },
+            ]}
+            onPress={handleSend}
+            disabled={!message.trim()}
+          >
+            <Ionicons name="send" size={20} color="white" />
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     </KeyboardAvoidingView>
   );
 }
@@ -387,7 +387,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: 16,
     paddingVertical: 8,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+    paddingBottom: 8,
   },
   input: {
     flex: 1,

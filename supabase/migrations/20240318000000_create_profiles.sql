@@ -108,20 +108,20 @@ begin
         last_seen_at = now();
         
     -- Check and update timed out devices
-    update public.user_status
+    update public.user_status us
     set status = 'offline',
-        last_seen_at = online_at
-    where (id, device_id) != (user_id, actual_device_id)
-      and status = 'online'
-      and online_at < now() - timeout_threshold;
+        last_seen_at = us.online_at
+    where (us.id, us.device_id) != (user_id, actual_device_id)
+      and us.status = 'online'
+      and us.online_at < now() - timeout_threshold;
   else
     -- Mark only this device as offline
-    update public.user_status
+    update public.user_status us
     set status = 'offline',
         last_seen_at = now()
-    where id = user_id
-      and device_id = actual_device_id
-      and status = 'online';
+    where us.id = user_id
+      and us.device_id = actual_device_id
+      and us.status = 'online';
   end if;
 end;
 $$ language plpgsql security definer;

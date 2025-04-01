@@ -11,7 +11,7 @@ export function useAuth() {
   // Função para gerar um ID único para o dispositivo
   const getDeviceId = async () => {
     try {
-      let deviceId = `${Platform.OS}-${await Device.getDeviceId()}`;
+      let deviceId = `${Platform.OS}-${await Device.modelId()}`;
       if (!deviceId) {
         deviceId = `${Platform.OS}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
       }
@@ -214,25 +214,33 @@ export function useAuth() {
           .eq('id', data.session.user.id)
           .single();
 
-        if (profileError || !profile) {
-          console.log('Perfil não encontrado, criando...');
-          // Se não existe, cria o perfil
-          const { error: insertError } = await supabase
-            .from('profiles')
-            .insert({
-              id: data.session.user.id,
-              full_name: email.split('@')[0],
-              avatar_url: null,
-            });
+        if (profileError) {
+          console.log('Erro ao buscar perfil:', profileError);
+          // Se o perfil não existe (código PGRST116), cria um novo
+          if (profileError.code === 'PGRST116') {
+            console.log('Perfil não encontrado, criando novo perfil...');
+            const { error: insertError } = await supabase
+              .from('profiles')
+              .insert({
+                id: data.session.user.id,
+                full_name: email.split('@')[0],
+                avatar_url: null,
+              });
 
-          if (insertError) {
-            console.error('Erro ao criar perfil:', insertError);
-            // Se o erro não for de duplicidade, propaga o erro
-            if (insertError.code !== '23505') {
-              throw insertError;
+            if (insertError) {
+              console.error('Erro ao criar perfil:', insertError);
+              // Se o erro não for de duplicidade, propaga o erro
+              if (insertError.code !== '23505') {
+                throw insertError;
+              } else {
+                console.log('Perfil já existe (erro de duplicidade)');
+              }
+            } else {
+              console.log('Perfil criado com sucesso');
             }
           } else {
-            console.log('Perfil criado com sucesso');
+            // Se for outro tipo de erro, loga e continua
+            console.error('Erro inesperado ao verificar perfil:', profileError);
           }
         } else {
           console.log('Perfil encontrado:', profile);

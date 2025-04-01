@@ -67,6 +67,38 @@ export default function ConversationsScreen() {
       console.log('Iniciando busca de usuários...');
       console.log('ID do usuário atual:', session.user.id);
       
+      // Primeiro, vamos verificar se o perfil do usuário atual existe
+      const { data: currentProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
+      if (profileError) {
+        console.error('Erro ao verificar perfil atual:', profileError);
+        // Se o perfil não existe, vamos criá-lo
+        if (profileError.code === 'PGRST116') {
+          console.log('Perfil não encontrado, criando...');
+          const { error: insertError } = await supabase
+            .from('profiles')
+            .insert({
+              id: session.user.id,
+              full_name: session.user.email?.split('@')[0] || 'Usuário',
+              avatar_url: null,
+            });
+
+          if (insertError) {
+            console.error('Erro ao criar perfil:', insertError);
+          } else {
+            console.log('Perfil criado com sucesso');
+          }
+        }
+      } else {
+        console.log('Perfil atual encontrado:', currentProfile);
+      }
+
+      // Agora busca todos os outros usuários
+      console.log('Buscando outros usuários...');
       const { data: profiles, error } = await supabase
         .from('profiles')
         .select(`
@@ -78,9 +110,7 @@ export default function ConversationsScreen() {
             last_seen_at,
             device_id
           )
-        `)
-        .neq('id', session.user.id)
-        .order('full_name');
+        `);
 
       if (error) {
         console.error('Erro ao buscar usuários:', error);
@@ -88,11 +118,14 @@ export default function ConversationsScreen() {
         return;
       }
 
-      console.log('Resposta da busca de usuários:', profiles);
-      console.log('Total de perfis encontrados:', profiles?.length || 0);
+      console.log('Todos os perfis encontrados:', profiles);
+      
+      // Filtra o usuário atual da lista
+      const otherProfiles = profiles?.filter(profile => profile.id !== session.user.id) || [];
+      console.log('Perfis após filtrar usuário atual:', otherProfiles);
 
       // Processa os usuários com seus status
-      const usersWithStatus = (profiles || []).map((profile: User) => {
+      const usersWithStatus = otherProfiles.map((profile: User) => {
         // Verifica se o usuário está online em algum dispositivo
         const isOnlineOnAnyDevice = profile.user_status?.some(
           status => status.status === 'online'

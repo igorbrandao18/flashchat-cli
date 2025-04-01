@@ -73,21 +73,34 @@ export default function ConversationsScreen() {
       // Processa os usuários com seus status
       const usersWithStatus = (profiles || []).map(profile => ({
         ...profile,
+        // Usa apenas o full_name ou fallback
+        full_name: profile.full_name || 'Usuário sem nome',
         user_status: profile.user_status?.[0] || {
           status: 'offline',
           last_seen_at: null
         }
       }));
 
-      console.log('Usuários encontrados:', usersWithStatus.length);
+      console.log('Total de usuários:', profiles?.length || 0);
+      console.log('Usuários processados:', usersWithStatus.length);
       console.log('Usuários online:', usersWithStatus.filter(u => u.user_status?.status === 'online').length);
       
       // Ordena usuários: online primeiro, depois por nome
       const sortedUsers = usersWithStatus.sort((a, b) => {
+        // Primeiro compara status online
         if (a.user_status?.status === 'online' && b.user_status?.status !== 'online') return -1;
         if (a.user_status?.status !== 'online' && b.user_status?.status === 'online') return 1;
-        return a.full_name.localeCompare(b.full_name);
+        
+        // Depois compara nomes, tratando valores null/undefined
+        const nameA = a.full_name || '';
+        const nameB = b.full_name || '';
+        return nameA.localeCompare(nameB);
       });
+
+      console.log('Usuários ordenados:', sortedUsers.map(u => ({ 
+        name: u.full_name, 
+        status: u.user_status?.status 
+      })));
 
       setUsers(sortedUsers);
       setFilteredUsers(sortedUsers);
@@ -160,6 +173,7 @@ export default function ConversationsScreen() {
 
           // Atualiza o status do usuário na lista
           const updateUserList = (current: User[]) => {
+            // Atualiza os status
             const updatedUsers = current.map(user =>
               user.id === updatedStatus.id
                 ? {
@@ -171,6 +185,12 @@ export default function ConversationsScreen() {
                   }
                 : user
             );
+            
+            console.log('Lista atualizada:', updatedUsers.map(u => ({
+              name: u.full_name,
+              status: u.user_status?.status
+            })));
+
             // Re-ordena a lista após a atualização
             return updatedUsers.sort((a, b) => {
               if (a.user_status?.status === 'online' && b.user_status?.status !== 'online') return -1;
@@ -239,8 +259,14 @@ export default function ConversationsScreen() {
     );
   }
 
+  // Não precisamos mais filtrar usuários inválidos pois todos terão um nome ou fallback
   const onlineUsers = filteredUsers.filter(user => user.user_status?.status === 'online');
   const offlineUsers = filteredUsers.filter(user => user.user_status?.status !== 'online');
+  
+  console.log('Total de usuários:', filteredUsers.length);
+  console.log('Usuários online:', onlineUsers.map(u => ({ name: u.full_name, status: u.user_status?.status })));
+  console.log('Usuários offline:', offlineUsers.map(u => ({ name: u.full_name, status: u.user_status?.status })));
+  
   const sortedUsers = [...onlineUsers, ...offlineUsers];
 
   const renderSectionHeader = (title: string, count: number) => (
@@ -291,56 +317,70 @@ export default function ConversationsScreen() {
 
       <SectionList
         sections={[
-          { title: 'Online', data: onlineUsers },
-          { title: 'Offline', data: offlineUsers }
+          { 
+            title: 'Online', 
+            data: onlineUsers
+          },
+          { 
+            title: 'Offline', 
+            data: offlineUsers
+          }
         ]}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[
-              styles.userItem,
-              { 
-                backgroundColor: colors.surface,
-                borderBottomColor: colors.border 
-              }
-            ]}
-            onPress={() => {
-              Keyboard.dismiss();
-              router.push(`/(chat)/${item.id}`);
-            }}
-          >
-            <View style={[styles.avatar, { backgroundColor: colors.secondary }]}>
-              <Text style={styles.avatarText}>
-                {item.full_name[0].toUpperCase()}
-              </Text>
-              {item.user_status?.status === 'online' && (
-                <View style={[styles.onlineIndicator, { borderColor: colors.surface }]} />
-              )}
-            </View>
-            <View style={styles.userInfo}>
-              <Text style={[styles.userName, { color: colors.text }]}>
-                {item.full_name}
-              </Text>
-              <Text 
-                style={[
-                  styles.lastSeen, 
-                  { 
-                    color: item.user_status?.status === 'online' 
-                      ? colors.success 
-                      : colors.textSecondary 
-                  }
-                ]}
-              >
-                {item.user_status?.status === 'online' 
-                  ? 'online' 
-                  : formatLastSeen(item.user_status?.last_seen_at || null)}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        )}
+        renderItem={({ item }) => {
+          console.log('Renderizando item:', item?.full_name, item?.user_status?.status);
+          if (!item || !item.full_name) {
+            console.log('Item inválido:', item);
+            return null;
+          }
+
+          return (
+            <TouchableOpacity
+              style={[
+                styles.userItem,
+                { 
+                  backgroundColor: colors.surface,
+                  borderBottomColor: colors.border 
+                }
+              ]}
+              onPress={() => {
+                Keyboard.dismiss();
+                router.push(`/(chat)/${item.id}`);
+              }}
+            >
+              <View style={[styles.avatar, { backgroundColor: colors.secondary }]}>
+                <Text style={styles.avatarText}>
+                  {(item.full_name[0] || '?').toUpperCase()}
+                </Text>
+                {item.user_status?.status === 'online' && (
+                  <View style={[styles.onlineIndicator, { borderColor: colors.surface }]} />
+                )}
+              </View>
+              <View style={styles.userInfo}>
+                <Text style={[styles.userName, { color: colors.text }]}>
+                  {item.full_name}
+                </Text>
+                <Text 
+                  style={[
+                    styles.lastSeen, 
+                    { 
+                      color: item.user_status?.status === 'online' 
+                        ? colors.success 
+                        : colors.textSecondary 
+                    }
+                  ]}
+                >
+                  {item.user_status?.status === 'online' 
+                    ? 'online' 
+                    : formatLastSeen(item.user_status?.last_seen_at || null)}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
         renderSectionHeader={({ section: { title, data } }) => 
           renderSectionHeader(title, data.length)
         }
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item?.id || 'unknown'}
         stickySectionHeadersEnabled={true}
         contentContainerStyle={styles.listContent}
       />

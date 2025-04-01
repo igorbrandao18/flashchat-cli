@@ -44,6 +44,7 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const { messageAnimation, startEnterAnimation } = useAnimations();
   const inputRef = useRef<TextInput>(null);
+  const [isSending, setIsSending] = useState(false);
 
   console.log('Chat screen params:', { userId, sessionUserId: session?.user?.id });
 
@@ -100,8 +101,9 @@ export default function ChatScreen() {
   });
 
   const handleSend = async () => {
-    if (!message.trim() || !session?.user?.id) return;
+    if (!message.trim() || !session?.user?.id || isSending) return;
 
+    setIsSending(true);
     const trimmedMessage = message.trim();
     setMessage('');
     inputRef.current?.focus();
@@ -113,10 +115,15 @@ export default function ChatScreen() {
       } else {
         startEnterAnimation();
         Vibration.vibrate(50);
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
       }
     } catch (error) {
       console.error('Error sending message:', error);
       setMessage(trimmedMessage);
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -158,9 +165,25 @@ export default function ChatScreen() {
           </Text>
           {isSender && (
             <Ionicons
-              name={item.read_at ? "checkmark-done" : "checkmark"}
+              name={
+                item.status === 'error' 
+                  ? "alert-circle"
+                  : item.status === 'sending'
+                  ? "time"
+                  : item.read_at 
+                  ? "checkmark-done" 
+                  : "checkmark"
+              }
               size={16}
-              color={item.read_at ? "#34B7F1" : "rgba(255,255,255,0.7)"}
+              color={
+                item.status === 'error'
+                  ? "#FF4444"
+                  : item.status === 'sending'
+                  ? "rgba(255,255,255,0.5)"
+                  : item.read_at 
+                  ? "#34B7F1" 
+                  : "rgba(255,255,255,0.7)"
+              }
               style={styles.readReceipt}
             />
           )}
@@ -259,13 +282,17 @@ export default function ChatScreen() {
               flatListRef.current?.scrollToEnd({ animated: true });
             }
           }}
+          maintainVisibleContentPosition={{
+            minIndexForVisible: 0,
+            autoscrollToTopThreshold: 10,
+          }}
           ListEmptyComponent={
             messagesLoading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="small" color={colors.primary} />
               </View>
             ) : (
-              <View style={styles.emptyContainer}>
+              <View style={[styles.loadingContainer, { paddingTop: '40%' }]}>
                 <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
                   No messages yet
                 </Text>
@@ -301,21 +328,30 @@ export default function ChatScreen() {
             placeholderTextColor={colors.textSecondary}
             multiline
             maxLength={1000}
-            onSubmitEditing={handleSend}
             returnKeyType="send"
             blurOnSubmit={false}
             enablesReturnKeyAutomatically
+            editable={!isSending}
+            onKeyPress={({ nativeEvent }) => {
+              if (nativeEvent.key === 'Enter') {
+                Keyboard.dismiss();
+                handleSend();
+              }
+            }}
           />
           <TouchableOpacity
             style={[
               styles.sendButton,
               {
-                backgroundColor: message.trim() ? colors.secondary : colors.textSecondary,
-                opacity: message.trim() ? 1 : 0.5,
+                backgroundColor: message.trim() && !isSending ? colors.secondary : colors.textSecondary,
+                opacity: message.trim() && !isSending ? 1 : 0.5,
               },
             ]}
-            onPress={handleSend}
-            disabled={!message.trim()}
+            onPress={() => {
+              Keyboard.dismiss();
+              handleSend();
+            }}
+            disabled={!message.trim() || isSending}
           >
             <Ionicons name="send" size={20} color="white" />
           </TouchableOpacity>

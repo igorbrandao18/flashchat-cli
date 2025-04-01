@@ -9,6 +9,7 @@ export interface Message {
   sender_id: string;
   receiver_id: string;
   read_at: string | null;
+  status?: 'sending' | 'sent' | 'error';
 }
 
 interface UseMessagesProps {
@@ -193,6 +194,26 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
       return null;
     }
 
+    // Verificar autenticação primeiro
+    const { data: authData, error: authError } = await supabase.auth.getSession();
+    if (authError || !authData.session) {
+      console.error('Erro de autenticação ao enviar mensagem:', {
+        authError,
+        currentUserId,
+        sessionUserId: authData.session?.user?.id
+      });
+      return null;
+    }
+
+    // Verificar se o usuário autenticado é o mesmo que está tentando enviar
+    if (authData.session.user.id !== currentUserId) {
+      console.error('ID do usuário não corresponde ao usuário autenticado:', {
+        currentUserId,
+        sessionUserId: authData.session.user.id
+      });
+      return null;
+    }
+
     // Criar mensagem local com ID temporário
     const tempId = `temp-${Date.now()}`;
     const optimisticMessage: Message = {
@@ -202,48 +223,110 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
       sender_id: currentUserId,
       receiver_id: chatId,
       read_at: null,
+      status: 'sending',
     };
 
     // Atualizar UI imediatamente
-    setMessages(current => [...current, optimisticMessage]);
+    const updateMessages = (current: Message[]): Message[] => {
+      const updatedMessages = [...current, optimisticMessage];
+      cacheMessages(updatedMessages).catch(console.error);
+      return updatedMessages;
+    };
+    setMessages(updateMessages);
 
     try {
-      console.log('Sending message:', content, 'from:', currentUserId, 'to:', chatId);
-      const newMessage = {
+      console.log('Tentando enviar mensagem:', {
         content: content.trim(),
         sender_id: currentUserId,
         receiver_id: chatId,
-      };
+        tempId,
+        sessionId: authData.session.user.id
+      });
 
       const { data, error } = await supabase
         .from('messages')
-        .insert([newMessage])
+        .insert([{
+          content: content.trim(),
+          sender_id: currentUserId,
+          receiver_id: chatId,
+        }])
         .select('*')
         .single();
 
       if (error) {
-        console.error('Error sending message:', error);
-        // Remover mensagem otimista em caso de erro
-        setMessages(current => current.filter(msg => msg.id !== tempId));
+        console.error('Erro detalhado ao enviar mensagem:', {
+          error,
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          sessionId: authData.session.user.id
+        });
+        
+        // Se for erro de autenticação, tentar reautenticar
+        if (error.code === 'PGRST301' || error.code === '42501') {
+          const { error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError) {
+            console.error('Erro ao tentar reautenticar:', refreshError);
+          }
+        }
+        
+        // Atualizar status da mensagem para erro
+        const updateErrorMessages = (current: Message[]): Message[] => {
+          const updatedMessages = current.map(msg => 
+            msg.id === tempId 
+              ? { ...msg, status: 'error' as const }
+              : msg
+          );
+          cacheMessages(updatedMessages).catch(console.error);
+          return updatedMessages;
+        };
+        setMessages(updateErrorMessages);
         return null;
       }
 
-      console.log('Message sent successfully:', data);
+      console.log('Mensagem enviada com sucesso:', {
+        tempId,
+        newMessageId: data.id,
+        data,
+        sessionId: authData.session.user.id
+      });
       
       // Substituir mensagem temporária pela real
-      setMessages(current => {
+      const updateSuccessMessages = (current: Message[]): Message[] => {
         const updatedMessages = current.map(msg => 
-          msg.id === tempId ? data : msg
+          msg.id === tempId 
+            ? { ...data, status: 'sent' as const }
+            : msg
         );
-        cacheMessages(updatedMessages);
+        cacheMessages(updatedMessages).catch(console.error);
         return updatedMessages;
-      });
+      };
+      setMessages(updateSuccessMessages);
 
       return data;
     } catch (error) {
-      console.error('Error in sendMessage:', error);
-      // Remover mensagem otimista em caso de erro
-      setMessages(current => current.filter(msg => msg.id !== tempId));
+      // Log detalhado do erro
+      console.error('Erro detalhado ao enviar mensagem (catch):', {
+        error,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : undefined,
+        tempId,
+        messageContent: content.trim(),
+        sessionId: authData.session.user.id
+      });
+
+      // Atualizar status da mensagem para erro
+      const updateErrorMessages = (current: Message[]): Message[] => {
+        const updatedMessages = current.map(msg => 
+          msg.id === tempId 
+            ? { ...msg, status: 'error' as const }
+            : msg
+        );
+        cacheMessages(updatedMessages).catch(console.error);
+        return updatedMessages;
+      };
+      setMessages(updateErrorMessages);
       return null;
     }
   };

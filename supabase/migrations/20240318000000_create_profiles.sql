@@ -1,3 +1,6 @@
+-- Enable required extensions
+create extension if not exists "uuid-ossp";
+
 -- Drop existing objects if they exist
 drop trigger if exists on_auth_user_created on auth.users;
 drop function if exists public.handle_new_user();
@@ -75,25 +78,42 @@ begin
 end;
 $$ language plpgsql security definer;
 
--- Function to update user online status
+-- Function to update user online status with automatic timeout check
 create or replace function public.update_user_status(user_id uuid, is_online boolean)
 returns void as $$
+declare
+  current_status record;
+  timeout_threshold interval = interval '1 minute';
 begin
   -- Ensure profile exists before updating status
   perform public.ensure_profile_exists(user_id);
   
+  -- Get current status
+  select * into current_status from public.user_status where id = user_id;
+  
   if is_online then
+    -- Update or insert online status
     insert into public.user_status (id, online_at, status, last_seen_at)
     values (user_id, now(), 'online', now())
     on conflict (id) do update
     set online_at = now(),
         status = 'online',
         last_seen_at = now();
+        
+    -- Check and update timed out users while we're at it
+    update public.user_status
+    set status = 'offline',
+        last_seen_at = online_at
+    where id != user_id
+      and status = 'online'
+      and online_at < now() - timeout_threshold;
   else
+    -- Mark user as offline
     update public.user_status
     set status = 'offline',
         last_seen_at = now()
-    where id = user_id;
+    where id = user_id
+      and status = 'online';
   end if;
 end;
 $$ language plpgsql security definer;

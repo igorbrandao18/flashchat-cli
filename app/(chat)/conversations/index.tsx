@@ -44,12 +44,15 @@ export default function ConversationsScreen() {
   // Função para buscar usuários
   const fetchUsers = async () => {
     if (!session?.user?.id) {
+      console.log('Sem usuário logado');
       setUsersLoading(false);
       return;
     }
 
     try {
-      console.log('Buscando usuários...');
+      console.log('Iniciando busca de usuários...');
+      console.log('ID do usuário atual:', session.user.id);
+      
       const { data: profiles, error } = await supabase
         .from('profiles')
         .select(`
@@ -61,7 +64,7 @@ export default function ConversationsScreen() {
             last_seen_at
           )
         `)
-        .neq('id', session.user.id) // Não busca o usuário atual
+        .neq('id', session.user.id)
         .order('full_name');
 
       if (error) {
@@ -70,20 +73,32 @@ export default function ConversationsScreen() {
         return;
       }
 
-      // Processa os usuários com seus status
-      const usersWithStatus = (profiles || []).map(profile => ({
-        ...profile,
-        // Usa apenas o full_name ou fallback
-        full_name: profile.full_name || 'Usuário sem nome',
-        user_status: profile.user_status?.[0] || {
-          status: 'offline',
-          last_seen_at: null
-        }
-      }));
+      console.log('Resposta da busca de usuários:', profiles);
+      console.log('Total de perfis encontrados:', profiles?.length || 0);
 
-      console.log('Total de usuários:', profiles?.length || 0);
-      console.log('Usuários processados:', usersWithStatus.length);
-      console.log('Usuários online:', usersWithStatus.filter(u => u.user_status?.status === 'online').length);
+      // Processa os usuários com seus status
+      const usersWithStatus = (profiles || []).map(profile => {
+        console.log('Processando perfil:', {
+          id: profile.id,
+          name: profile.full_name,
+          status: profile.user_status?.[0]?.status
+        });
+        
+        return {
+          ...profile,
+          full_name: profile.full_name || 'Usuário sem nome',
+          user_status: profile.user_status?.[0] || {
+            status: 'offline',
+            last_seen_at: null
+          }
+        };
+      });
+
+      console.log('Usuários processados:', usersWithStatus.map(u => ({
+        id: u.id,
+        name: u.full_name,
+        status: u.user_status?.status
+      })));
       
       // Ordena usuários: online primeiro, depois por nome
       const sortedUsers = usersWithStatus.sort((a, b) => {
@@ -97,9 +112,10 @@ export default function ConversationsScreen() {
         return nameA.localeCompare(nameB);
       });
 
-      console.log('Usuários ordenados:', sortedUsers.map(u => ({ 
-        name: u.full_name, 
-        status: u.user_status?.status 
+      console.log('Lista final de usuários:', sortedUsers.map(u => ({
+        id: u.id,
+        name: u.full_name,
+        status: u.user_status?.status
       })));
 
       setUsers(sortedUsers);

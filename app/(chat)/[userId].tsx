@@ -13,6 +13,7 @@ import {
   Keyboard,
   Vibration,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
@@ -230,90 +231,96 @@ export default function ChatScreen() {
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <Header 
         title={chatUser.full_name} 
         showBackButton 
       />
-      <Text style={[styles.statusText, { color: colors.textSecondary }]}>
-        {userStatus}
-      </Text>
-      
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.messagesList}
-        onContentSizeChange={() => {
-          if (messages.length > 0) {
-            flatListRef.current?.scrollToEnd({ animated: true });
+      <View style={styles.content}>
+        <Text style={[styles.statusText, { color: colors.textSecondary }]}>
+          {userStatus}
+        </Text>
+        
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.messagesList}
+          onContentSizeChange={() => {
+            if (messages.length > 0) {
+              flatListRef.current?.scrollToEnd({ animated: true });
+            }
+          }}
+          onLayout={() => {
+            if (messages.length > 0) {
+              flatListRef.current?.scrollToEnd({ animated: true });
+            }
+          }}
+          ListEmptyComponent={
+            messagesLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
+            ) : (
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                No messages yet
+              </Text>
+            )
           }
-        }}
-        onLayout={() => {
-          if (messages.length > 0) {
-            flatListRef.current?.scrollToEnd({ animated: true });
-          }
-        }}
-        ListEmptyComponent={
-          messagesLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color={colors.primary} />
-            </View>
-          ) : (
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-              No messages yet
-            </Text>
-          )
-        }
-      />
-
-      {syncing && (
-        <View style={styles.syncIndicator}>
-          <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={[styles.syncText, { color: colors.textSecondary }]}>
-            Syncing...
-          </Text>
-        </View>
-      )}
-
-      <Animated.View style={[styles.inputContainer, { backgroundColor: colors.surface }]}>
-        <TextInput
-          ref={inputRef}
-          style={[
-            styles.input,
-            {
-              backgroundColor: colors.inputBackground,
-              color: colors.text,
-            },
-          ]}
-          value={message}
-          onChangeText={setMessage}
-          placeholder="Type a message..."
-          placeholderTextColor={colors.textSecondary}
-          multiline
-          maxLength={1000}
-          onSubmitEditing={handleSend}
-          returnKeyType="send"
-          blurOnSubmit={false}
-          enablesReturnKeyAutomatically
         />
-        <TouchableOpacity
-          style={[
-            styles.sendButton,
-            {
-              backgroundColor: message.trim() ? colors.secondary : colors.textSecondary,
-              opacity: message.trim() ? 1 : 0.5,
-            },
-          ]}
-          onPress={handleSend}
-          disabled={!message.trim()}
-        >
-          <Ionicons name="send" size={20} color="white" />
-        </TouchableOpacity>
-      </Animated.View>
+
+        {syncing && (
+          <View style={styles.syncIndicator}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={[styles.syncText, { color: colors.textSecondary }]}>
+              Syncing...
+            </Text>
+          </View>
+        )}
+      </View>
+
+      <View style={[styles.inputWrapper, { backgroundColor: colors.surface }]}>
+        <SafeAreaView edges={['bottom']}>
+          <View style={styles.inputContainer}>
+            <TextInput
+              ref={inputRef}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: colors.inputBackground,
+                  color: colors.text,
+                },
+              ]}
+              value={message}
+              onChangeText={setMessage}
+              placeholder="Type a message..."
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              maxLength={1000}
+              onSubmitEditing={handleSend}
+              returnKeyType="send"
+              blurOnSubmit={false}
+              enablesReturnKeyAutomatically
+            />
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                {
+                  backgroundColor: message.trim() ? colors.secondary : colors.textSecondary,
+                  opacity: message.trim() ? 1 : 0.5,
+                },
+              ]}
+              onPress={handleSend}
+              disabled={!message.trim()}
+            >
+              <Ionicons name="send" size={20} color="white" />
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -322,17 +329,24 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  content: {
+    flex: 1,
+    paddingTop: 8,
+  },
+  messagesList: {
+    flexGrow: 1,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingTop: 20,
   },
   errorText: {
     fontSize: 16,
     fontWeight: '500',
-  },
-  messagesList: {
-    padding: 16,
   },
   messageContainer: {
     maxWidth: '80%',
@@ -363,10 +377,17 @@ const styles = StyleSheet.create({
   readReceipt: {
     marginLeft: 4,
   },
+  inputWrapper: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
+    backgroundColor: 'white',
+  },
   inputContainer: {
     flexDirection: 'row',
-    padding: 8,
     alignItems: 'flex-end',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 8,
   },
   input: {
     flex: 1,
@@ -383,12 +404,12 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 2,
   },
   statusText: {
-    fontSize: 13,
+    fontSize: 12,
     textAlign: 'center',
-    paddingVertical: 4,
-    backgroundColor: 'rgba(0,0,0,0.03)',
+    marginBottom: 8,
   },
   emptyText: {
     textAlign: 'center',

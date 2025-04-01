@@ -1,72 +1,55 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/config/supabase';
 import { Session } from '@supabase/supabase-js';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
+import * as Device from 'expo-device';
 
 export function useAuth() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Função para gerar um ID único para o dispositivo
+  const getDeviceId = async () => {
+    try {
+      let deviceId = `${Platform.OS}-${await Device.getDeviceId()}`;
+      if (!deviceId) {
+        deviceId = `${Platform.OS}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      }
+      return deviceId;
+    } catch (error) {
+      console.error('Erro ao obter ID do dispositivo:', error);
+      return `${Platform.OS}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    }
+  };
+
   const updateOnlineStatus = async (isOnline: boolean) => {
-    if (!session?.user?.id) return;
+    if (!session?.user) return;
 
     try {
-      // Primeiro verifica se o usuário existe na auth.users
-      const { data: authUser, error: authError } = await supabase.auth.getUser();
+      const deviceId = await getDeviceId();
+      console.log('Atualizando status:', { isOnline, deviceId });
       
-      if (authError || !authUser?.user) {
-        console.error('Usuário não encontrado na auth:', authError);
-        setSession(null);
-        return;
-      }
-
-      // Depois verifica se o perfil existe
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', session.user.id)
-        .single();
-
-      if (profileError || !profile) {
-        // Se o perfil não existe, cria ele primeiro
-        const { error: insertError } = await supabase
-          .from('profiles')
-          .insert({
-            id: session.user.id,
-            full_name: session.user.email?.split('@')[0] || 'User',
-            avatar_url: null,
-          });
-
-        if (insertError) {
-          console.error('Erro ao criar perfil:', insertError);
-          // Se o erro for de chave estrangeira, significa que o usuário não existe mais
-          if (insertError.code === '23503') {
-            setSession(null);
-          }
-          return;
-        }
-      }
-
-      // Agora que temos certeza que o perfil existe, atualiza o status
       const { error } = await supabase.rpc('update_user_status', {
         user_id: session.user.id,
         is_online: isOnline,
+        device_id: deviceId
       });
 
       if (error) {
         console.error('Erro ao atualizar status online:', error);
-        // Se falhou em atualizar o status, tenta inserir diretamente
+        // Fallback: tenta inserir/atualizar diretamente se a RPC falhar
         await supabase
           .from('user_status')
           .upsert({
             id: session.user.id,
+            device_id: deviceId,
             status: isOnline ? 'online' : 'offline',
             online_at: isOnline ? new Date().toISOString() : null,
             last_seen_at: new Date().toISOString(),
           });
       }
     } catch (error) {
-      console.error('Erro ao atualizar status:', error);
+      console.error('Erro em updateOnlineStatus:', error);
     }
   };
 

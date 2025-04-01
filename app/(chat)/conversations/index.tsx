@@ -17,19 +17,33 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import Header from '@/components/Header';
 
+interface UserStatus {
+  status: string;
+  last_seen_at: string | null;
+  device_id: string;
+}
+
 interface User {
+  id: string;
+  full_name: string;
+  avatar_url: string | null;
+  user_status: UserStatus[];
+}
+
+interface ProcessedUser {
   id: string;
   full_name: string;
   avatar_url: string | null;
   user_status: {
     status: string;
     last_seen_at: string | null;
-  } | null;
+    device_id: string | null;
+  };
 }
 
 export default function ConversationsScreen() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<ProcessedUser[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<ProcessedUser[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const { session, loading } = useAuth();
@@ -61,7 +75,8 @@ export default function ConversationsScreen() {
           avatar_url,
           user_status (
             status,
-            last_seen_at
+            last_seen_at,
+            device_id
           )
         `)
         .neq('id', session.user.id)
@@ -77,27 +92,46 @@ export default function ConversationsScreen() {
       console.log('Total de perfis encontrados:', profiles?.length || 0);
 
       // Processa os usuários com seus status
-      const usersWithStatus = (profiles || []).map(profile => {
+      const usersWithStatus = (profiles || []).map((profile: User) => {
+        // Verifica se o usuário está online em algum dispositivo
+        const isOnlineOnAnyDevice = profile.user_status?.some(
+          status => status.status === 'online'
+        );
+
+        // Pega o último status visto (mais recente)
+        const lastSeenStatus = profile.user_status?.reduce((latest, current) => {
+          if (!latest || (latest.last_seen_at && current.last_seen_at && 
+              new Date(current.last_seen_at) > new Date(latest.last_seen_at))) {
+            return current;
+          }
+          return latest;
+        }, profile.user_status[0]);
+
         console.log('Processando perfil:', {
           id: profile.id,
           name: profile.full_name,
-          status: profile.user_status?.[0]?.status
+          online: isOnlineOnAnyDevice,
+          devices: profile.user_status?.length || 0
         });
         
-        return {
+        const processedUser: ProcessedUser = {
           ...profile,
           full_name: profile.full_name || 'Usuário sem nome',
-          user_status: profile.user_status?.[0] || {
-            status: 'offline',
-            last_seen_at: null
+          user_status: {
+            status: isOnlineOnAnyDevice ? 'online' : 'offline',
+            last_seen_at: lastSeenStatus?.last_seen_at || null,
+            device_id: lastSeenStatus?.device_id || null
           }
         };
+
+        return processedUser;
       });
 
       console.log('Usuários processados:', usersWithStatus.map(u => ({
         id: u.id,
         name: u.full_name,
-        status: u.user_status?.status
+        status: u.user_status?.status,
+        lastSeen: u.user_status?.last_seen_at
       })));
       
       // Ordena usuários: online primeiro, depois por nome
@@ -152,22 +186,23 @@ export default function ConversationsScreen() {
           if (payload.eventType === 'DELETE') {
             console.log('Status removido:', payload.old.id);
             // Quando um status é removido, consideramos o usuário como offline
-            const updateUserList = (current: User[]) => {
+            const updateUserList = (current: ProcessedUser[]) => {
               const updatedUsers = current.map(user => 
                 user.id === payload.old.id
                   ? {
                       ...user,
                       user_status: {
                         status: 'offline',
-                        last_seen_at: new Date().toISOString()
+                        last_seen_at: new Date().toISOString(),
+                        device_id: null
                       }
                     }
                   : user
               );
               // Re-ordena a lista após a atualização
               return updatedUsers.sort((a, b) => {
-                if (a.user_status?.status === 'online' && b.user_status?.status !== 'online') return -1;
-                if (a.user_status?.status !== 'online' && b.user_status?.status === 'online') return 1;
+                if (a.user_status.status === 'online' && b.user_status.status !== 'online') return -1;
+                if (a.user_status.status !== 'online' && b.user_status.status === 'online') return 1;
                 return a.full_name.localeCompare(b.full_name);
               });
             };
@@ -188,15 +223,15 @@ export default function ConversationsScreen() {
           console.log('Atualizando status:', updatedStatus);
 
           // Atualiza o status do usuário na lista
-          const updateUserList = (current: User[]) => {
-            // Atualiza os status
+          const updateUserList = (current: ProcessedUser[]) => {
             const updatedUsers = current.map(user =>
               user.id === updatedStatus.id
                 ? {
                     ...user,
                     user_status: {
                       status: updatedStatus.status,
-                      last_seen_at: updatedStatus.last_seen_at
+                      last_seen_at: updatedStatus.last_seen_at,
+                      device_id: updatedStatus.device_id
                     }
                   }
                 : user
@@ -209,8 +244,8 @@ export default function ConversationsScreen() {
 
             // Re-ordena a lista após a atualização
             return updatedUsers.sort((a, b) => {
-              if (a.user_status?.status === 'online' && b.user_status?.status !== 'online') return -1;
-              if (a.user_status?.status !== 'online' && b.user_status?.status === 'online') return 1;
+              if (a.user_status.status === 'online' && b.user_status.status !== 'online') return -1;
+              if (a.user_status.status !== 'online' && b.user_status.status === 'online') return 1;
               return a.full_name.localeCompare(b.full_name);
             });
           };

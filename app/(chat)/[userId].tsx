@@ -26,7 +26,10 @@ interface ChatUser {
   id: string;
   full_name: string;
   avatar_url: string | null;
-  last_seen: string | null;
+  user_status: {
+    status: string;
+    last_seen_at: string | null;
+  } | null;
 }
 
 export default function ChatScreen() {
@@ -36,7 +39,6 @@ export default function ChatScreen() {
   const [message, setMessage] = useState('');
   const [chatUser, setChatUser] = useState<ChatUser | null>(null);
   const [userLoading, setUserLoading] = useState(true);
-  const [isSending, setIsSending] = useState(false);
   const { colors } = useTheme();
   const flatListRef = useRef<FlatList>(null);
   const { messageAnimation, startEnterAnimation } = useAnimations();
@@ -47,51 +49,73 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!userId || !session?.user?.id) {
       console.error('Missing required IDs:', { userId, sessionUserId: session?.user?.id });
+      setUserLoading(false);
       return;
     }
 
     async function fetchChatUser() {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url, last_seen')
-        .eq('id', userId)
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select(`
+            id, 
+            full_name, 
+            avatar_url,
+            user_status (
+              status,
+              last_seen_at
+            )
+          `)
+          .eq('id', userId)
+          .single();
 
-      if (error) {
-        console.error('Error fetching chat user:', error);
-        return;
+        if (error) {
+          console.error('Error fetching chat user:', error);
+          setUserLoading(false);
+          return;
+        }
+
+        console.log('Chat user fetched:', data);
+        const chatUser: ChatUser = {
+          id: data.id,
+          full_name: data.full_name,
+          avatar_url: data.avatar_url,
+          user_status: data.user_status?.[0] || null
+        };
+        setChatUser(chatUser);
+      } catch (error) {
+        console.error('Error in fetchChatUser:', error);
+      } finally {
+        setUserLoading(false);
       }
-
-      console.log('Chat user fetched:', data);
-      setChatUser(data);
-      setUserLoading(false);
     }
 
     fetchChatUser();
   }, [userId, session?.user?.id]);
 
-  const { messages, loading: messagesLoading, sendMessage } = useMessages({
+  const { messages, loading: messagesLoading, syncing, sendMessage } = useMessages({
     chatId: userId,
     currentUserId: session?.user?.id || '',
   });
 
   const handleSend = async () => {
-    if (!message.trim() || !session?.user?.id || isSending) return;
+    if (!message.trim() || !session?.user?.id) return;
 
     const trimmedMessage = message.trim();
     setMessage('');
-    setIsSending(true);
-    Keyboard.dismiss();
-    Vibration.vibrate(50); // Haptic feedback
-
+    inputRef.current?.focus();
+    
     try {
-      await sendMessage(trimmedMessage);
-      startEnterAnimation();
+      const result = await sendMessage(trimmedMessage);
+      if (!result) {
+        setMessage(trimmedMessage);
+      } else {
+        startEnterAnimation();
+        Vibration.vibrate(50);
+      }
     } catch (error) {
       console.error('Error sending message:', error);
-      setMessage(trimmedMessage); // Restore message if failed
-    } finally {
-      setIsSending(false);
+      setMessage(trimmedMessage);
     }
   };
 
@@ -144,7 +168,36 @@ export default function ChatScreen() {
     );
   };
 
-  if (userLoading || messagesLoading) {
+  const formatLastSeen = (lastSeen: string | null) => {
+    if (!lastSeen) return 'never';
+    const date = new Date(lastSeen);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days === 1) return 'yesterday';
+    return date.toLocaleDateString();
+  };
+
+  if (!session?.user?.id) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Header title="Error" showBackButton />
+        <View style={styles.loadingContainer}>
+          <Text style={[styles.errorText, { color: colors.error }]}>
+            Please log in to continue
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (userLoading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <Header title="Loading..." showBackButton />
@@ -168,22 +221,64 @@ export default function ChatScreen() {
     );
   }
 
+  const userStatus = chatUser.user_status?.status === 'online' 
+    ? 'online'
+    : chatUser.user_status?.last_seen_at
+      ? `Last seen ${formatLastSeen(chatUser.user_status.last_seen_at)}`
+      : 'offline';
+
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
-      <Header title={chatUser.full_name} showBackButton />
+      <Header 
+        title={chatUser.full_name} 
+        showBackButton 
+      />
+      <Text style={[styles.statusText, { color: colors.textSecondary }]}>
+        {userStatus}
+      </Text>
+      
       <FlatList
         ref={flatListRef}
         data={messages}
         renderItem={renderMessage}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.messagesList}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
-        onLayout={() => flatListRef.current?.scrollToEnd()}
+        onContentSizeChange={() => {
+          if (messages.length > 0) {
+            flatListRef.current?.scrollToEnd({ animated: true });
+          }
+        }}
+        onLayout={() => {
+          if (messages.length > 0) {
+            flatListRef.current?.scrollToEnd({ animated: true });
+          }
+        }}
+        ListEmptyComponent={
+          messagesLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={colors.primary} />
+            </View>
+          ) : (
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+              No messages yet
+            </Text>
+          )
+        }
       />
+
+      {syncing && (
+        <View style={styles.syncIndicator}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={[styles.syncText, { color: colors.textSecondary }]}>
+            Syncing...
+          </Text>
+        </View>
+      )}
+
       <Animated.View style={[styles.inputContainer, { backgroundColor: colors.surface }]}>
         <TextInput
           ref={inputRef}
@@ -200,23 +295,23 @@ export default function ChatScreen() {
           placeholderTextColor={colors.textSecondary}
           multiline
           maxLength={1000}
+          onSubmitEditing={handleSend}
+          returnKeyType="send"
+          blurOnSubmit={false}
+          enablesReturnKeyAutomatically
         />
         <TouchableOpacity
           style={[
             styles.sendButton,
             {
               backgroundColor: message.trim() ? colors.secondary : colors.textSecondary,
-              transform: [{ scale: message.trim() ? 1 : 0.9 }],
+              opacity: message.trim() ? 1 : 0.5,
             },
           ]}
           onPress={handleSend}
-          disabled={!message.trim() || isSending}
+          disabled={!message.trim()}
         >
-          {isSending ? (
-            <ActivityIndicator size="small" color="white" />
-          ) : (
-            <Ionicons name="send" size={20} color="white" />
-          )}
+          <Ionicons name="send" size={20} color="white" />
         </TouchableOpacity>
       </Animated.View>
     </KeyboardAvoidingView>
@@ -288,5 +383,27 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  statusText: {
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 4,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  emptyText: {
+    textAlign: 'center',
+    marginTop: 20,
+    fontSize: 16,
+  },
+  syncIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 4,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  syncText: {
+    fontSize: 12,
+    marginLeft: 8,
   },
 }); 

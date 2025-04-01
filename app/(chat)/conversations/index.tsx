@@ -8,8 +8,9 @@ import {
   ActivityIndicator,
   TextInput,
   Keyboard,
+  SectionList,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, Redirect } from 'expo-router';
 import { supabase } from '@/config/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -20,8 +21,10 @@ interface User {
   id: string;
   full_name: string;
   avatar_url: string | null;
-  last_seen: string | null;
-  online: boolean;
+  user_status: {
+    status: string;
+    last_seen_at: string | null;
+  } | null;
 }
 
 export default function ConversationsScreen() {
@@ -29,76 +32,169 @@ export default function ConversationsScreen() {
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const { session } = useAuth();
-  const [loading, setLoading] = useState(true);
+  const { session, loading } = useAuth();
+  const [usersLoading, setUsersLoading] = useState(true);
   const { colors } = useTheme();
 
-  useEffect(() => {
+  // Se não estiver logado, redireciona para o login
+  if (!loading && !session) {
+    return <Redirect href="/(auth)/login" />;
+  }
+
+  // Função para buscar usuários
+  const fetchUsers = async () => {
     if (!session?.user?.id) {
-      setLoading(false);
+      setUsersLoading(false);
       return;
     }
 
-    async function fetchUsers() {
-      const { data, error } = await supabase
+    try {
+      console.log('Buscando usuários...');
+      const { data: profiles, error } = await supabase
         .from('profiles')
-        .select('id, full_name, avatar_url, last_seen')
-        .neq('id', session.user.id)
+        .select(`
+          id,
+          full_name,
+          avatar_url,
+          user_status (
+            status,
+            last_seen_at
+          )
+        `)
+        .neq('id', session.user.id) // Não busca o usuário atual
         .order('full_name');
 
       if (error) {
-        console.error('Error fetching users:', error);
+        console.error('Erro ao buscar usuários:', error);
+        setUsersLoading(false);
         return;
       }
 
-      const usersWithOnline = data.map(user => ({ ...user, online: false })) || [];
-      setUsers(usersWithOnline);
-      setFilteredUsers(usersWithOnline);
-      setLoading(false);
-    }
+      // Processa os usuários com seus status
+      const usersWithStatus = (profiles || []).map(profile => ({
+        ...profile,
+        user_status: profile.user_status?.[0] || {
+          status: 'offline',
+          last_seen_at: null
+        }
+      }));
 
+      console.log('Usuários encontrados:', usersWithStatus.length);
+      console.log('Usuários online:', usersWithStatus.filter(u => u.user_status?.status === 'online').length);
+      
+      // Ordena usuários: online primeiro, depois por nome
+      const sortedUsers = usersWithStatus.sort((a, b) => {
+        if (a.user_status?.status === 'online' && b.user_status?.status !== 'online') return -1;
+        if (a.user_status?.status !== 'online' && b.user_status?.status === 'online') return 1;
+        return a.full_name.localeCompare(b.full_name);
+      });
+
+      setUsers(sortedUsers);
+      setFilteredUsers(sortedUsers);
+    } catch (error) {
+      console.error('Erro em fetchUsers:', error);
+      setUsers([]);
+      setFilteredUsers([]);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Busca inicial de usuários
     fetchUsers();
 
-    // Subscribe to presence changes
-    const channel = supabase.channel('online-users', {
-      config: {
-        presence: {
-          key: session.user.id,
+    if (!session?.user?.id) {
+      return;
+    }
+
+    // Inscreve para mudanças em tempo real na tabela user_status
+    const statusChannel = supabase.channel('user_status_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_status',
         },
-      },
-    });
+        (payload) => {
+          console.log('Mudança de status recebida:', payload);
+          
+          if (payload.eventType === 'DELETE') {
+            console.log('Status removido:', payload.old.id);
+            // Quando um status é removido, consideramos o usuário como offline
+            const updateUserList = (current: User[]) => {
+              const updatedUsers = current.map(user => 
+                user.id === payload.old.id
+                  ? {
+                      ...user,
+                      user_status: {
+                        status: 'offline',
+                        last_seen_at: new Date().toISOString()
+                      }
+                    }
+                  : user
+              );
+              // Re-ordena a lista após a atualização
+              return updatedUsers.sort((a, b) => {
+                if (a.user_status?.status === 'online' && b.user_status?.status !== 'online') return -1;
+                if (a.user_status?.status !== 'online' && b.user_status?.status === 'online') return 1;
+                return a.full_name.localeCompare(b.full_name);
+              });
+            };
+            
+            setUsers(updateUserList);
+            setFilteredUsers(updateUserList);
+            return;
+          }
 
-    // Track current user's presence
-    channel.subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        await channel.track({
-          online_at: new Date().toISOString(),
-          user_id: session.user.id,
-        });
-      }
-    });
+          const updatedStatus = payload.new;
+          
+          // Não atualiza se for o usuário atual
+          if (updatedStatus.id === session.user.id) {
+            console.log('Ignorando atualização do usuário atual');
+            return;
+          }
 
-    // Listen to presence changes
-    channel.on('presence', { event: 'sync' }, () => {
-      const state = channel.presenceState();
-      const onlineUserIds = new Set(
-        Object.values(state)
-          .flat()
-          .map((presence: any) => presence.user_id)
-      );
+          console.log('Atualizando status:', updatedStatus);
 
-      const updateUsers = (currentUsers: User[]) =>
-        currentUsers.map(user => ({
-          ...user,
-          online: onlineUserIds.has(user.id),
-        }));
+          // Atualiza o status do usuário na lista
+          const updateUserList = (current: User[]) => {
+            const updatedUsers = current.map(user =>
+              user.id === updatedStatus.id
+                ? {
+                    ...user,
+                    user_status: {
+                      status: updatedStatus.status,
+                      last_seen_at: updatedStatus.last_seen_at
+                    }
+                  }
+                : user
+            );
+            // Re-ordena a lista após a atualização
+            return updatedUsers.sort((a, b) => {
+              if (a.user_status?.status === 'online' && b.user_status?.status !== 'online') return -1;
+              if (a.user_status?.status !== 'online' && b.user_status?.status === 'online') return 1;
+              return a.full_name.localeCompare(b.full_name);
+            });
+          };
 
-      setUsers(updateUsers);
-      setFilteredUsers(current => updateUsers(current));
-    });
+          setUsers(updateUserList);
+          setFilteredUsers(updateUserList);
+        }
+      )
+      .subscribe((status) => {
+        console.log('Status da inscrição realtime:', status);
+      });
 
+    // Atualiza a lista a cada 30 segundos
+    const intervalId = setInterval(fetchUsers, 30000);
+
+    // Cleanup
     return () => {
-      channel.unsubscribe();
+      console.log('Limpando inscrição realtime');
+      statusChannel.unsubscribe();
+      clearInterval(intervalId);
     };
   }, [session?.user?.id]);
 
@@ -117,7 +213,7 @@ export default function ConversationsScreen() {
   };
 
   const formatLastSeen = (lastSeen: string | null) => {
-    if (!lastSeen) return 'Never seen';
+    if (!lastSeen) return 'Nunca visto';
     const date = new Date(lastSeen);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
@@ -125,76 +221,14 @@ export default function ConversationsScreen() {
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
 
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days === 1) return 'Yesterday';
+    if (minutes < 1) return 'Agora mesmo';
+    if (minutes < 60) return `${minutes}m atrás`;
+    if (hours < 24) return `${hours}h atrás`;
+    if (days === 1) return 'Ontem';
     return date.toLocaleDateString();
   };
 
-  const renderUser = ({ item }: { item: User }) => (
-    <TouchableOpacity
-      style={[
-        styles.userItem,
-        { 
-          backgroundColor: colors.surface,
-          borderBottomColor: colors.border 
-        }
-      ]}
-      onPress={() => {
-        Keyboard.dismiss();
-        router.push(`/(chat)/${item.id}`);
-      }}
-    >
-      <View style={[styles.avatar, { backgroundColor: colors.secondary }]}>
-        <Text style={styles.avatarText}>
-          {item.full_name[0].toUpperCase()}
-        </Text>
-        {item.online && <View style={styles.onlineIndicator} />}
-      </View>
-      <View style={styles.userInfo}>
-        <Text style={[styles.userName, { color: colors.text }]}>
-          {item.full_name}
-        </Text>
-        <Text 
-          style={[
-            styles.lastSeen, 
-            { 
-              color: item.online ? colors.success : colors.textSecondary 
-            }
-          ]}
-        >
-          {item.online ? 'online' : formatLastSeen(item.last_seen)}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-
-  const renderSearchBar = () => (
-    <View style={[styles.searchContainer, { backgroundColor: colors.surface }]}>
-      <Ionicons name="search" size={20} color={colors.textSecondary} />
-      <TextInput
-        style={[styles.searchInput, { color: colors.text }]}
-        placeholder="Search users..."
-        placeholderTextColor={colors.textSecondary}
-        value={searchQuery}
-        onChangeText={handleSearch}
-        autoFocus
-      />
-      {searchQuery ? (
-        <TouchableOpacity
-          onPress={() => {
-            setSearchQuery('');
-            setFilteredUsers(users);
-          }}
-        >
-          <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
-        </TouchableOpacity>
-      ) : null}
-    </View>
-  );
-
-  if (loading) {
+  if (usersLoading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <Header />
@@ -205,9 +239,17 @@ export default function ConversationsScreen() {
     );
   }
 
-  const onlineUsers = filteredUsers.filter(user => user.online);
-  const offlineUsers = filteredUsers.filter(user => !user.online);
+  const onlineUsers = filteredUsers.filter(user => user.user_status?.status === 'online');
+  const offlineUsers = filteredUsers.filter(user => user.user_status?.status !== 'online');
   const sortedUsers = [...onlineUsers, ...offlineUsers];
+
+  const renderSectionHeader = (title: string, count: number) => (
+    <View style={[styles.sectionHeader, { backgroundColor: colors.background }]}>
+      <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+        {title} ({count})
+      </Text>
+    </View>
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -222,18 +264,85 @@ export default function ConversationsScreen() {
           Keyboard.dismiss();
         }}
       />
-      <FlatList
-        data={sortedUsers}
-        renderItem={renderUser}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[styles.listContent, { backgroundColor: colors.background }]}
-        ListHeaderComponent={
-          isSearching ? renderSearchBar() : (
-            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-              {onlineUsers.length} online
-            </Text>
-          )
+      
+      {isSearching ? (
+        <View style={[styles.searchContainer, { backgroundColor: colors.surface }]}>
+          <Ionicons name="search" size={20} color={colors.textSecondary} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Buscar usuários..."
+            placeholderTextColor={colors.textSecondary}
+            value={searchQuery}
+            onChangeText={handleSearch}
+            autoFocus
+          />
+          {searchQuery ? (
+            <TouchableOpacity
+              onPress={() => {
+                setSearchQuery('');
+                setFilteredUsers(users);
+              }}
+            >
+              <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
+
+      <SectionList
+        sections={[
+          { title: 'Online', data: onlineUsers },
+          { title: 'Offline', data: offlineUsers }
+        ]}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={[
+              styles.userItem,
+              { 
+                backgroundColor: colors.surface,
+                borderBottomColor: colors.border 
+              }
+            ]}
+            onPress={() => {
+              Keyboard.dismiss();
+              router.push(`/(chat)/${item.id}`);
+            }}
+          >
+            <View style={[styles.avatar, { backgroundColor: colors.secondary }]}>
+              <Text style={styles.avatarText}>
+                {item.full_name[0].toUpperCase()}
+              </Text>
+              {item.user_status?.status === 'online' && (
+                <View style={[styles.onlineIndicator, { borderColor: colors.surface }]} />
+              )}
+            </View>
+            <View style={styles.userInfo}>
+              <Text style={[styles.userName, { color: colors.text }]}>
+                {item.full_name}
+              </Text>
+              <Text 
+                style={[
+                  styles.lastSeen, 
+                  { 
+                    color: item.user_status?.status === 'online' 
+                      ? colors.success 
+                      : colors.textSecondary 
+                  }
+                ]}
+              >
+                {item.user_status?.status === 'online' 
+                  ? 'online' 
+                  : formatLastSeen(item.user_status?.last_seen_at || null)}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
+        renderSectionHeader={({ section: { title, data } }) => 
+          renderSectionHeader(title, data.length)
         }
+        keyExtractor={(item) => item.id}
+        stickySectionHeadersEnabled={true}
+        contentContainerStyle={styles.listContent}
       />
     </View>
   );
@@ -250,7 +359,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     flexGrow: 1,
-    paddingTop: 16,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -267,11 +375,13 @@ const styles = StyleSheet.create({
     marginRight: 8,
     padding: 0,
   },
+  sectionHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
   sectionTitle: {
     fontSize: 14,
     fontWeight: '500',
-    marginBottom: 8,
-    paddingHorizontal: 16,
   },
   userItem: {
     flexDirection: 'row',
@@ -300,7 +410,6 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     backgroundColor: '#4CAF50',
     borderWidth: 2,
-    borderColor: 'white',
   },
   userInfo: {
     flex: 1,
@@ -313,5 +422,15 @@ const styles = StyleSheet.create({
   lastSeen: {
     fontSize: 13,
     marginTop: 2,
+  },
+  messageContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  message: {
+    fontSize: 16,
+    textAlign: 'center',
   },
 }); 

@@ -83,6 +83,25 @@ begin
 end;
 $$ language plpgsql security definer;
 
+-- Function to update user online status
+create or replace function public.update_user_status(user_id uuid, is_online boolean)
+returns void as $$
+begin
+  if is_online then
+    insert into public.user_status (id, online_at, status, last_seen_at)
+    values (user_id, now(), 'online', now())
+    on conflict (id) do update
+    set online_at = now(),
+        status = 'online';
+  else
+    update public.user_status
+    set status = 'offline',
+        last_seen_at = now()
+    where id = user_id;
+  end if;
+end;
+$$ language plpgsql security definer;
+
 -- Trigger for user status
 create trigger on_auth_user_created
   after insert on auth.users

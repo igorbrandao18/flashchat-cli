@@ -18,17 +18,49 @@ interface UseMessagesProps {
 
 export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const loadCachedMessages = useCallback(async () => {
+    if (!chatId) return;
+
+    try {
+      const cached = await AsyncStorage.getItem(`@messages:${chatId}`);
+      if (cached) {
+        const parsedMessages = JSON.parse(cached);
+        console.log('Loaded cached messages:', parsedMessages.length);
+        setMessages(parsedMessages);
+      }
+    } catch (error) {
+      console.error('Error loading cached messages:', error);
+    }
+  }, [chatId]);
+
+  const cacheMessages = async (newMessages: Message[]) => {
+    if (!chatId) return;
+
+    try {
+      await AsyncStorage.setItem(
+        `@messages:${chatId}`,
+        JSON.stringify(newMessages)
+      );
+      console.log('Messages cached successfully');
+    } catch (error) {
+      console.error('Error caching messages:', error);
+    }
+  };
 
   const fetchMessages = useCallback(async () => {
     if (!chatId || !currentUserId) {
       console.error('Invalid IDs:', { chatId, currentUserId });
-      setLoading(false);
+      setSyncing(false);
       return;
     }
 
     try {
+      setSyncing(true);
       console.log('Fetching messages for chat:', { chatId, currentUserId });
+      
       const { data: sentMessages, error: sentError } = await supabase
         .from('messages')
         .select('*')
@@ -57,14 +89,14 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
 
       console.log('Fetched messages:', allMessages.length, 'messages');
       setMessages(allMessages);
-      setLoading(false);
       if (allMessages.length) {
         markMessagesAsRead(allMessages);
         await cacheMessages(allMessages);
       }
     } catch (error) {
       console.error('Error in fetchMessages:', error);
-      setLoading(false);
+    } finally {
+      setSyncing(false);
     }
   }, [chatId, currentUserId]);
 
@@ -75,7 +107,11 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
     }
 
     console.log('Initializing chat with:', { chatId, currentUserId });
+    
+    // Primeiro carrega as mensagens do cache
     loadCachedMessages();
+    
+    // Depois sincroniza com o servidor
     fetchMessages();
 
     // Subscribe to realtime updates
@@ -122,36 +158,7 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
       console.log('Cleaning up chat subscription');
       channel.unsubscribe();
     };
-  }, [chatId, currentUserId, fetchMessages]);
-
-  const loadCachedMessages = async () => {
-    if (!chatId) return;
-
-    try {
-      const cached = await AsyncStorage.getItem(`@messages:${chatId}`);
-      if (cached) {
-        const parsedMessages = JSON.parse(cached);
-        console.log('Loaded cached messages:', parsedMessages.length);
-        setMessages(parsedMessages);
-      }
-    } catch (error) {
-      console.error('Error loading cached messages:', error);
-    }
-  };
-
-  const cacheMessages = async (newMessages: Message[]) => {
-    if (!chatId) return;
-
-    try {
-      await AsyncStorage.setItem(
-        `@messages:${chatId}`,
-        JSON.stringify(newMessages)
-      );
-      console.log('Messages cached successfully');
-    } catch (error) {
-      console.error('Error caching messages:', error);
-    }
-  };
+  }, [chatId, currentUserId, fetchMessages, loadCachedMessages]);
 
   const markMessagesAsRead = async (messagesToMark: Message[]) => {
     if (!currentUserId) return;
@@ -186,6 +193,20 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
       return null;
     }
 
+    // Criar mensagem local com ID temporário
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      content: content.trim(),
+      created_at: new Date().toISOString(),
+      sender_id: currentUserId,
+      receiver_id: chatId,
+      read_at: null,
+    };
+
+    // Atualizar UI imediatamente
+    setMessages(current => [...current, optimisticMessage]);
+
     try {
       console.log('Sending message:', content, 'from:', currentUserId, 'to:', chatId);
       const newMessage = {
@@ -202,14 +223,18 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
 
       if (error) {
         console.error('Error sending message:', error);
+        // Remover mensagem otimista em caso de erro
+        setMessages(current => current.filter(msg => msg.id !== tempId));
         return null;
       }
 
       console.log('Message sent successfully:', data);
       
-      // Update local messages immediately
+      // Substituir mensagem temporária pela real
       setMessages(current => {
-        const updatedMessages = [...current, data];
+        const updatedMessages = current.map(msg => 
+          msg.id === tempId ? data : msg
+        );
         cacheMessages(updatedMessages);
         return updatedMessages;
       });
@@ -217,6 +242,8 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
       return data;
     } catch (error) {
       console.error('Error in sendMessage:', error);
+      // Remover mensagem otimista em caso de erro
+      setMessages(current => current.filter(msg => msg.id !== tempId));
       return null;
     }
   };
@@ -224,6 +251,7 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
   return {
     messages,
     loading,
+    syncing,
     sendMessage,
     markMessagesAsRead,
   };

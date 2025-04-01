@@ -60,42 +60,53 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
 
     try {
       setSyncing(true);
-      console.log('Fetching messages for chat:', { chatId, currentUserId });
+      console.log('Buscando mensagens para o chat:', { chatId, currentUserId });
       
-      const { data: sentMessages, error: sentError } = await supabase
+      const { data: messages, error } = await supabase
         .from('messages')
         .select('*')
-        .eq('sender_id', currentUserId)
-        .eq('receiver_id', chatId);
+        .or(
+          `and(sender_id.eq.${currentUserId},receiver_id.eq.${chatId}),` +
+          `and(sender_id.eq.${chatId},receiver_id.eq.${currentUserId})`
+        )
+        .order('created_at', { ascending: true });
 
-      if (sentError) {
-        console.error('Error fetching sent messages:', sentError);
+      if (error) {
+        console.error('Erro ao buscar mensagens:', error);
         return;
       }
 
-      const { data: receivedMessages, error: receivedError } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('sender_id', chatId)
-        .eq('receiver_id', currentUserId);
-
-      if (receivedError) {
-        console.error('Error fetching received messages:', receivedError);
-        return;
-      }
-
-      const allMessages = [...(sentMessages || []), ...(receivedMessages || [])].sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      );
-
-      console.log('Fetched messages:', allMessages.length, 'messages');
-      setMessages(allMessages);
-      if (allMessages.length) {
-        markMessagesAsRead(allMessages);
-        await cacheMessages(allMessages);
+      console.log('Mensagens encontradas:', {
+        total: messages?.length || 0,
+        enviadas: messages?.filter(m => m.sender_id === currentUserId).length || 0,
+        recebidas: messages?.filter(m => m.receiver_id === currentUserId).length || 0
+      });
+      
+      if (messages && messages.length > 0) {
+        console.log('Primeira mensagem:', {
+          id: messages[0].id,
+          content: messages[0].content,
+          sender: messages[0].sender_id,
+          receiver: messages[0].receiver_id,
+          created_at: messages[0].created_at
+        });
+        console.log('Última mensagem:', {
+          id: messages[messages.length - 1].id,
+          content: messages[messages.length - 1].content,
+          sender: messages[messages.length - 1].sender_id,
+          receiver: messages[messages.length - 1].receiver_id,
+          created_at: messages[messages.length - 1].created_at
+        });
+        
+        setMessages(messages);
+        markMessagesAsRead(messages);
+        await cacheMessages(messages);
+      } else {
+        console.log('Nenhuma mensagem encontrada para esta conversa');
+        setMessages([]);
       }
     } catch (error) {
-      console.error('Error in fetchMessages:', error);
+      console.error('Erro em fetchMessages:', error);
     } finally {
       setSyncing(false);
     }
@@ -125,7 +136,7 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
           event: '*',
           schema: 'public',
           table: 'messages',
-          filter: `or(and(sender_id.eq.${currentUserId},receiver_id.eq.${chatId}),and(sender_id.eq.${chatId},receiver_id.eq.${currentUserId}))`,
+          filter: `(sender_id.eq.${currentUserId}.and.receiver_id.eq.${chatId}).or.(sender_id.eq.${chatId}.and.receiver_id.eq.${currentUserId})`,
         },
         (payload) => {
           console.log('Realtime message update:', payload);
@@ -137,9 +148,13 @@ export function useMessages({ chatId, currentUserId }: UseMessagesProps) {
             setMessages((current) => {
               // Avoid duplicate messages
               if (current.some(msg => msg.id === newMessage.id)) {
+                console.log('Mensagem duplicada, ignorando:', newMessage.id);
                 return current;
               }
-              const updatedMessages = [...current, newMessage];
+              console.log('Adicionando nova mensagem à lista:', newMessage.id);
+              const updatedMessages = [...current, newMessage].sort(
+                (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              );
               cacheMessages(updatedMessages);
               return updatedMessages;
             });
